@@ -1,49 +1,28 @@
-name: Deploy Full Stack to Production
+name: Deploy TechWiki to Production
 
 on:
     push:
         branches: [deploy]
     workflow_dispatch:
+        inputs:
+            image_tag:
+                description: Docker image tag to deploy (use a full Git SHA for rollback)
+                required: true
+                default: latest
+                type: string
+
+permissions:
+    contents: read
+    id-token: write
 
 jobs:
     deploy:
-        name: Deploy Full Stack to Production
-        runs-on: ubuntu-latest
-        if: github.ref == 'refs/heads/deploy'
-        container:
-            image: adbsoftwaresolutions/ansible-runner:latest
-            options: --user root
-            env:
-                HOME: /root
-
-        steps:
-            - name: Checkout deploy repo
-              uses: actions/checkout@v3
-              with:
-                  repository: adb-software-solutions/adb-deploy
-                  token: ${{ secrets.DEPLOY_REPO_PAT }}
-
-            - name: Set up SSH
-              run: |
-                  mkdir -p /root/.ssh
-                  echo "${{ secrets.DEPLOY_SSH_KEY }}" > /root/.ssh/id_ed25519
-                  chmod 600 /root/.ssh/id_ed25519
-                  ssh-keyscan -p 1999 206.189.28.66 >> /root/.ssh/known_hosts
-
-            - name: Install Ansible Collections
-              run: ansible-galaxy collection install -r requirements.yml
-
-            - name: Deploy full stack
-              run: |
-                  ansible-playbook site.yml -i inventories/production/hosts.ini \
-                    --extra-vars "site=techwiki-website" \
-                    --extra-vars "cloudflare_api_token=${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-                    --extra-vars "techwiki_backend_secret_key=${{ secrets.techwiki_BACKEND_SECRET_KEY }}" \
-                    --extra-vars "techwiki_db_name=${{ secrets.techwiki_DB_NAME }}" \
-                    --extra-vars "techwiki_db_user=${{ secrets.techwiki_DB_USER }}" \
-                    --extra-vars "techwiki_db_password=${{ secrets.techwiki_DB_PASSWORD }}" \
-                    --extra-vars "techwiki_microsoft_graph_tenant_id=${{ secrets.techwiki_MICROSOFT_GRAPH_TENANT_ID }}" \
-                    --extra-vars "techwiki_microsoft_graph_client_id=${{ secrets.techwiki_MICROSOFT_GRAPH_CLIENT_ID }}" \
-                    --extra-vars "techwiki_microsoft_graph_sender_email=${{ secrets.techwiki_MICROSOFT_GRAPH_SENDER_EMAIL }}" \
-                    --extra-vars "techwiki_microsoft_graph_certificate_base64=${{ secrets.techwiki_MICROSOFT_GRAPH_CERTIFICATE_BASE64 }}" \
-                    --extra-vars "techwiki_microsoft_private_key_base64=${{ secrets.techwiki_MICROSOFT_PRIVATE_KEY_BASE64 }}" \
+        name: Deploy TechWiki to Production
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/deploy-application.yml@v1
+        with:
+            application: techwiki
+            image-tag: ${{ inputs.image_tag || 'latest' }}
+            infisical-identity-id: 9d4773d2-4f23-434f-b66e-b9a4a826efdb
+            infisical-application-project-id: 000b37bc-9883-4779-a09f-52045d454d73
+            infisical-deployment-bootstrap-project-id: a1f87e48-bbea-4952-9498-723c15ba8c38
+            infisical-infrastructure-project-id: d39c5ad0-b79f-4f12-b081-9aec36fdca8e

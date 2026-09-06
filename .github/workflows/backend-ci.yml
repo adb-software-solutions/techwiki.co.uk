@@ -1,9 +1,8 @@
-name: TechWiki Backend CI (Monorepo)
+name: TechWiki Backend CI
 
 on:
     push:
-        branches: ["main"]
-        tags: ["*"]
+        branches: [main]
         paths:
             - "backend/**"
             - "Dockerfile.backend"
@@ -14,6 +13,7 @@ on:
             - ".github/workflows/backend-ci.yml"
             - "README.md"
     pull_request:
+        types: [opened, synchronize, reopened, ready_for_review]
         paths:
             - "backend/**"
             - "Dockerfile.backend"
@@ -30,180 +30,44 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
-    tests-and-linters:
-        name: Run Tests and Linters
-        runs-on: ubuntu-latest
+    lint:
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+        permissions:
+            contents: read
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/lint.yml@v1
+        with:
+            lint-command: pnpm --dir website install --frozen-lockfile && pnpm --dir auth-frontend install --frozen-lockfile && tools/lint
 
-        services:
-            postgres:
-                image: postgres:14.4
-                env:
-                    POSTGRES_DB: techwiki_dev
-                    POSTGRES_USER: user
-                    POSTGRES_PASSWORD: pass
-                ports: ["5432:5432"]
-                options: >-
-                    --health-cmd="pg_isready -U user"
-                    --health-interval=10s
-                    --health-timeout=5s
-                    --health-retries=5
-            redis:
-                image: redis:7.0.4
-                ports: ["6379:6379"]
+    django:
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+        permissions:
+            contents: read
+            id-token: write
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/django-ci.yml@v1
+        with:
+            django-settings-module: techwiki.settings_test
+            database-name: techwiki_dev
+            upload-codecov: true
+            infisical-identity-id: ${{ github.event_name == 'pull_request' && '0d9fa906-682d-4a09-8161-00b0749e757e' || '8b59f6b8-7757-4379-a381-a2403ed715f6' }}
+            infisical-ci-project-id: 52cb4e76-fb16-41a8-8438-93801584b903
 
-        env:
-            SQL_ENGINE: django.db.backends.postgresql
-            SQL_DATABASE: techwiki_dev
-            SQL_USER: user
-            SQL_PASSWORD: pass
-            SQL_HOST: localhost
-            SQL_PORT: 5432
-            SECRET_KEY: test
-            DEBUG: 1
-            DEBUG_TOOLBAR_ENABLED: 0
-            SITE_DOMAIN: testserver
-            SESSION_BACKEND_URL: redis://localhost:6379/1
-            CACHE_BACKEND_URL: redis://localhost:6379/2
+    trivy:
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+        permissions:
+            contents: read
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/trivy-fs.yml@v1
+        with:
+            artifact-name: trivy-fs-scan-backend
 
-        steps:
-            - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - uses: actions/setup-python@v5
-              with:
-                  python-version: "3.12"
-
-            # Node + pnpm for root-level tools/lint (and per-app bins)
-            - uses: pnpm/action-setup@v4.1.0
-
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: "22"
-                  cache: "pnpm"
-                  cache-dependency-path: |
-                      pnpm-lock.yaml
-                      website/pnpm-lock.yaml
-                      auth-frontend/pnpm-lock.yaml
-
-            # Install Node deps in root, frontend, and website so prettier/eslint/stylelint exist
-            - name: Install root Node deps
-              if: hashFiles('pnpm-lock.yaml') != ''
-              run: pnpm install --frozen-lockfile
-
-            - name: Install website Node deps
-              if: hashFiles('website/pnpm-lock.yaml') != ''
-              working-directory: website
-              run: pnpm install --frozen-lockfile
-
-            - name: Install auth-frontend Node deps
-              if: hashFiles('auth-frontend/pnpm-lock.yaml') != ''
-              working-directory: auth-frontend
-              run: pnpm install --frozen-lockfile
-
-            # Ensure node_modules/.bin from all locations are available to tools/lint
-            - name: Add node bin paths to PATH
-              run: |
-                  echo "$GITHUB_WORKSPACE/node_modules/.bin" >> $GITHUB_PATH
-                  echo "$GITHUB_WORKSPACE/website/node_modules/.bin" >> $GITHUB_PATH
-                  echo "$GITHUB_WORKSPACE/auth-frontend/node_modules/.bin" >> $GITHUB_PATH
-
-            - name: Cache pip
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cache/pip
-                  key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements/*.txt') }}
-                  restore-keys: ${{ runner.os }}-pip-
-
-            - name: Install Python dependencies
-              run: pip install -r backend/requirements/dev.txt
-
-            - name: Run Django tests
-              working-directory: backend
-              run: DJANGO_SETTINGS_MODULE=techwiki.settings_test coverage run manage.py test -v 2
-
-            - name: Generate coverage file
-              working-directory: backend
-              run: coverage xml
-
-            - name: Install Shellcheck + shfmt
-              run: |
-                  tools/setup/install-shellcheck
-                  tools/setup/install-shfmt
-
-            # Run lint from repo root with Django context so mypy plugin can import settings
-            - name: Run linters (root tools/lint)
-              run: tools/lint
-
-            - name: Upload coverage to Codecov
-              if: ${{ github.repository == 'adb-software-solutions/techwiki.co.uk' && github.event_name == 'push' }}
-              uses: codecov/codecov-action@v4
-              with:
-                  token: ${{ secrets.CODECOV_TOKEN }}
-                  files: ./backend/coverage.xml
-                  flags: backend,unittests
-                  name: Backend Coverage
-                  fail_ci_if_error: true
-                  verbose: true
-
-    trivy-fs-scan:
-        name: Trivy FS Scan (Backend + Root)
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-            - name: Trivy FS Scan
-              uses: aquasecurity/trivy-action@v0.36.0
-              with:
-                  scan-type: fs
-                  severity: HIGH,CRITICAL
-                  output: trivy-fs-scan.txt
-              env:
-                  TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db,public.ecr.aws/aquasecurity/trivy-db
-                  TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db,public.ecr.aws/aquasecurity/trivy-java-db
-            - uses: actions/upload-artifact@v4
-              with:
-                  name: trivy-fs-scan-backend
-                  path: trivy-fs-scan.txt
-
-    build-and-push:
-        name: Build and Push Backend Images
-        runs-on: ubuntu-latest
-        needs: [tests-and-linters, trivy-fs-scan]
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
-        strategy:
-            matrix:
-                image:
-                    - backend
-        steps:
-            - uses: actions/checkout@v4
-            - name: Log in to DigitalOcean Container Registry
-              run: echo "${{ secrets.DO_REGISTRY_ACCESS_TOKEN }}" | docker login -u ${{ secrets.DO_REGISTRY_USERNAME }} --password-stdin registry.digitalocean.com
-            - name: Build and push ${{ matrix.image }}
-              run: |
-                  docker build -f Dockerfile.${{ matrix.image }} -t registry.digitalocean.com/adbsoftwaresolutions/techwiki-${{ matrix.image }}:latest .
-                  docker push registry.digitalocean.com/adbsoftwaresolutions/techwiki-${{ matrix.image }}:latest
-
-    trivy-image-scan:
-        name: Trivy Image Scan (Backend)
-        runs-on: ubuntu-latest
-        needs: build-and-push
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
-        strategy:
-            matrix:
-                image:
-                    - backend
-        steps:
-            - name: Scan registry.digitalocean.com/adbsoftwaresolutions/techwiki-${{ matrix.image }}:latest
-              uses: aquasecurity/trivy-action@v0.36.0
-              with:
-                  scan-type: image
-                  image-ref: registry.digitalocean.com/adbsoftwaresolutions/techwiki-${{ matrix.image }}:latest
-                  severity: HIGH,CRITICAL
-                  output: trivy-${{ matrix.image }}-scan.txt
-              env:
-                  TRIVY_USERNAME: ${{ secrets.DO_REGISTRY_USERNAME }}
-                  TRIVY_PASSWORD: ${{ secrets.DO_REGISTRY_ACCESS_TOKEN }}
-            - uses: actions/upload-artifact@v4
-              with:
-                  name: trivy-image-scan-${{ matrix.image }}
-                  path: trivy-${{ matrix.image }}-scan.txt
+    build:
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        needs: [lint, django, trivy]
+        permissions:
+            contents: read
+            id-token: write
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/docker-build-push.yml@v1
+        with:
+            application: techwiki
+            images: '["backend"]'
+            infisical-identity-id: 8b59f6b8-7757-4379-a381-a2403ed715f6
+            infisical-registry-project-id: 848009f4-aa7d-45e2-8fb6-404bd8f25115

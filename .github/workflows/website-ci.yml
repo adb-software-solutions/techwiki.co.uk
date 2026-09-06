@@ -1,9 +1,8 @@
-name: TechWiki Website CI (Monorepo)
+name: TechWiki Website CI
 
 on:
     push:
-        branches: ["main"]
-        tags: ["*"]
+        branches: [main]
         paths:
             - "website/**"
             - "Dockerfile.website"
@@ -13,6 +12,7 @@ on:
             - "package.json"
             - "README.md"
     pull_request:
+        types: [opened, synchronize, reopened, ready_for_review]
         paths:
             - "website/**"
             - "Dockerfile.website"
@@ -28,236 +28,48 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
-    trivy-fs-scan:
-        name: Trivy FS Scan (Website)
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-            - name: Run Trivy FS Scan
-              uses: aquasecurity/trivy-action@v0.36.0
-              with:
-                  scan-type: fs
-                  severity: HIGH,CRITICAL
-                  output: trivy-fs-scan.txt
-              env:
-                  TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db,public.ecr.aws/aquasecurity/trivy-db
-                  TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db,public.ecr.aws/aquasecurity/trivy-java-db
-            - uses: actions/upload-artifact@v4
-              with:
-                  name: trivy-fs-scan-website
-                  path: trivy-fs-scan.txt
+    lint:
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+        permissions:
+            contents: read
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/lint.yml@v1
+        with:
+            lint-command: pnpm --dir website install --frozen-lockfile && pnpm --dir auth-frontend install --frozen-lockfile && tools/lint
 
-    run-linters:
-        name: Run Linters (root tools/lint)
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-              with:
-                  ref: ${{ github.event.pull_request.head.sha }}
+    frontend:
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+        permissions:
+            contents: read
+            id-token: write
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/frontend-ci.yml@v1
+        with:
+            working-directory: website
+            lockfile: pnpm-lock.yaml
+            test-command: pnpm test --passWithNoTests
+            infisical-identity-id: ${{ github.event_name == 'pull_request' && '0d9fa906-682d-4a09-8161-00b0749e757e' || '8b59f6b8-7757-4379-a381-a2403ed715f6' }}
+            infisical-project-id: ${{ github.event_name == 'pull_request' && '52cb4e76-fb16-41a8-8438-93801584b903' || '000b37bc-9883-4779-a09f-52045d454d73' }}
+            infisical-environment: ${{ github.event_name == 'pull_request' && 'dev' || 'prod' }}
 
-            - uses: pnpm/action-setup@v4.1.0
+    trivy:
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+        permissions:
+            contents: read
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/trivy-fs.yml@v1
+        with:
+            artifact-name: trivy-fs-scan-website
 
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: "22"
-                  cache: "pnpm"
-                  cache-dependency-path: |
-                      pnpm-lock.yaml
-                      website/pnpm-lock.yaml
-                      auth-frontend/pnpm-lock.yaml
-
-            - name: Install root Node deps
-              run: pnpm install --frozen-lockfile
-
-            - name: Install website Node deps
-              working-directory: website
-              run: pnpm install --frozen-lockfile
-
-            - name: Install auth-frontend Node deps
-              working-directory: auth-frontend
-              run: pnpm install --frozen-lockfile
-
-            - name: Add node bin paths to PATH
-              run: |
-                  echo "$GITHUB_WORKSPACE/node_modules/.bin" >> $GITHUB_PATH
-                  echo "$GITHUB_WORKSPACE/website/node_modules/.bin" >> $GITHUB_PATH
-                  echo "$GITHUB_WORKSPACE/auth-frontend/node_modules/.bin" >> $GITHUB_PATH
-
-            - uses: actions/setup-python@v5
-              with:
-                  python-version: "3.12"
-
-            - name: Install Python tooling deps
-              run: pip install -r backend/requirements/dev.txt
-
-            - name: Install Shell tooling
-              run: |
-                  tools/setup/install-shellcheck
-                  tools/setup/install-shfmt
-
-            - name: Fetch main for comparison
-              run: git fetch origin main
-
-            - name: Run all linters (root)
-              run: tools/lint
-
-    run-tests:
-        name: Run Tests
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - uses: pnpm/action-setup@v4.1.0
-
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: "22"
-                  cache: "pnpm"
-                  cache-dependency-path: |
-                      pnpm-lock.yaml
-                      website/pnpm-lock.yaml
-                      auth-frontend/pnpm-lock.yaml
-
-            - name: Install website Node deps
-              working-directory: website
-              run: pnpm install --frozen-lockfile
-
-            - name: Install auth-frontend Node deps
-              working-directory: auth-frontend
-              run: pnpm install --frozen-lockfile
-
-            - name: Run website tests
-              working-directory: website
-              run: pnpm test --passWithNoTests
-
-    build-and-analyze:
-        name: Build and Bundle Analysis
-        runs-on: ubuntu-latest
-        needs: [run-linters, run-tests]
-        steps:
-            - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - uses: pnpm/action-setup@v4.1.0
-
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: "22"
-                  cache: "pnpm"
-                  cache-dependency-path: |
-                      pnpm-lock.yaml
-                      website/pnpm-lock.yaml
-                      auth-frontend/pnpm-lock.yaml
-
-            - name: Install website Node deps
-              working-directory: website
-              run: pnpm install --frozen-lockfile
-
-            - name: Install auth-frontend Node deps
-              working-directory: auth-frontend
-              run: pnpm install --frozen-lockfile
-
-            - name: Build website for analysis
-              working-directory: website
-              run: pnpm run build
-              timeout-minutes: 5
-              env:
-                  NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ vars.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
-                  NEXT_PUBLIC_ADSENSE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_ADSENSE_CLIENT_ID }}
-                  NEXT_PUBLIC_ADSENSE_BANNER_SLOT: ${{ vars.NEXT_PUBLIC_ADSENSE_BANNER_SLOT }}
-                  NEXT_PUBLIC_ADSENSE_SIDEBAR_SLOT: ${{ vars.NEXT_PUBLIC_ADSENSE_SIDEBAR_SLOT }}
-                  NEXT_PUBLIC_ADSENSE_IN_ARTICLE_SLOT: ${{ vars.NEXT_PUBLIC_ADSENSE_IN_ARTICLE_SLOT }}
-
-            # Upload bundle analysis to Codecov
-            # https://docs.codecov.com/docs/javascript-bundle-analysis
-            - name: Upload bundle analysis to Codecov
-              if: ${{ github.repository == 'adb-software-solutions/techwiki.co.uk' }}
-              uses: codecov/codecov-action@v4
-              with:
-                  token: ${{ secrets.CODECOV_TOKEN }}
-                  plugin: bundler
-                  flags: website
-                  name: Website Bundle Analysis
-                  directory: ./website/.next
-                  fail_ci_if_error: false
-                  verbose: true
-
-    build-and-push-image:
-        name: Build and Push Docker Image
-        runs-on: ubuntu-latest
-        needs: [run-linters, trivy-fs-scan, build-and-analyze]
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
-        steps:
-            - uses: actions/checkout@v4
-            - name: Set tag suffix
-              id: meta
-              run: |
-                  if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-                    TAG="${GITHUB_REF##refs/tags/}"
-                    echo "tag_suffix=${TAG}" >> $GITHUB_OUTPUT
-                  else
-                    echo "tag_suffix=latest" >> $GITHUB_OUTPUT
-                  fi
-
-            - name: Generate .env for production
-              run: |
-                  {
-                    echo "NEXT_PUBLIC_GA_MEASUREMENT_ID=${NEXT_PUBLIC_GA_MEASUREMENT_ID}";
-                    echo "NEXT_PUBLIC_ADSENSE_CLIENT_ID=${NEXT_PUBLIC_ADSENSE_CLIENT_ID}";
-                    echo "NEXT_PUBLIC_ADSENSE_BANNER_SLOT=${NEXT_PUBLIC_ADSENSE_BANNER_SLOT}";
-                    echo "NEXT_PUBLIC_ADSENSE_SIDEBAR_SLOT=${NEXT_PUBLIC_ADSENSE_SIDEBAR_SLOT}";
-                    echo "NEXT_PUBLIC_ADSENSE_IN_ARTICLE_SLOT=${NEXT_PUBLIC_ADSENSE_IN_ARTICLE_SLOT}";
-                    echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}";
-                    echo "NEXT_PUBLIC_AUTH_URL=${NEXT_PUBLIC_AUTH_URL}";
-                  } > ./website/.ci.env
-              env:
-                  NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ vars.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
-                  NEXT_PUBLIC_ADSENSE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_ADSENSE_CLIENT_ID }}
-                  NEXT_PUBLIC_ADSENSE_BANNER_SLOT: ${{ vars.NEXT_PUBLIC_ADSENSE_BANNER_SLOT }}
-                  NEXT_PUBLIC_ADSENSE_SIDEBAR_SLOT: ${{ vars.NEXT_PUBLIC_ADSENSE_SIDEBAR_SLOT }}
-                  NEXT_PUBLIC_ADSENSE_IN_ARTICLE_SLOT: ${{ vars.NEXT_PUBLIC_ADSENSE_IN_ARTICLE_SLOT }}
-                  NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
-                  NEXT_PUBLIC_AUTH_URL: ${{ secrets.NEXT_PUBLIC_AUTH_URL }}
-
-            - name: Log in to DigitalOcean Container Registry
-              run: echo "${{ secrets.DO_REGISTRY_ACCESS_TOKEN }}" | docker login -u ${{ secrets.DO_REGISTRY_USERNAME }} --password-stdin registry.digitalocean.com
-            - name: Build Docker Image
-              run: |
-                  docker build \
-                    -f Dockerfile.website \
-                    -t registry.digitalocean.com/adbsoftwaresolutions/techwiki-website:${{ steps.meta.outputs.tag_suffix }} \
-                    .
-            - name: Push Docker Image
-              run: docker push registry.digitalocean.com/adbsoftwaresolutions/techwiki-website:${{ steps.meta.outputs.tag_suffix }}
-
-    scan-docker-image:
-        name: Trivy Image Scan (Website)
-        runs-on: ubuntu-latest
-        needs: build-and-push-image
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
-        steps:
-            - uses: actions/checkout@v4
-            - name: Set tag suffix
-              id: meta
-              run: |
-                  if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-                    TAG="${GITHUB_REF##refs/tags/}"
-                    echo "tag_suffix=${TAG}" >> $GITHUB_OUTPUT
-                  else
-                    echo "tag_suffix=latest" >> $GITHUB_OUTPUT
-                  fi
-            - name: Run Trivy Docker Image Scan
-              uses: aquasecurity/trivy-action@v0.36.0
-              with:
-                  scan-type: image
-                  image-ref: registry.digitalocean.com/adbsoftwaresolutions/techwiki-website:${{ steps.meta.outputs.tag_suffix }}
-                  severity: HIGH,CRITICAL
-                  output: trivy-image-scan.txt
-              env:
-                  TRIVY_USERNAME: ${{ secrets.DO_REGISTRY_USERNAME }}
-                  TRIVY_PASSWORD: ${{ secrets.DO_REGISTRY_ACCESS_TOKEN }}
-            - uses: actions/upload-artifact@v4
-              with:
-                  name: trivy-docker-image-scan-website
-                  path: trivy-image-scan.txt
+    build:
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        needs: [lint, frontend, trivy]
+        permissions:
+            contents: read
+            id-token: write
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/docker-build-push.yml@v1
+        with:
+            application: techwiki
+            images: '["website"]'
+            infisical-identity-id: 8b59f6b8-7757-4379-a381-a2403ed715f6
+            infisical-registry-project-id: 848009f4-aa7d-45e2-8fb6-404bd8f25115
+            infisical-application-project-id: 000b37bc-9883-4779-a09f-52045d454d73
+            build-env-file: website/.ci.env
+            build-env-keys: '["NEXT_PUBLIC_GA_MEASUREMENT_ID","NEXT_PUBLIC_ADSENSE_CLIENT_ID","NEXT_PUBLIC_API_URL","NEXT_PUBLIC_AUTH_URL"]'
