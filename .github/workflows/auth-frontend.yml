@@ -46,6 +46,9 @@ jobs:
             working-directory: auth-frontend
             lockfile: pnpm-lock.yaml
             test-command: pnpm test --passWithNoTests
+            infisical-identity-id: ${{ github.event_name == 'pull_request' && '0d9fa906-682d-4a09-8161-00b0749e757e' || '8b59f6b8-7757-4379-a381-a2403ed715f6' }}
+            infisical-project-id: ${{ github.event_name == 'pull_request' && '52cb4e76-fb16-41a8-8438-93801584b903' || '000b37bc-9883-4779-a09f-52045d454d73' }}
+            infisical-environment: ${{ github.event_name == 'pull_request' && 'dev' || 'prod' }}
 
     trivy:
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
