@@ -72,4 +72,4 @@ jobs:
             infisical-registry-project-id: 848009f4-aa7d-45e2-8fb6-404bd8f25115
             infisical-application-project-id: 000b37bc-9883-4779-a09f-52045d454d73
             build-env-file: website/.ci.env
-            build-env-keys: '["NEXT_PUBLIC_GA_MEASUREMENT_ID","NEXT_PUBLIC_ADSENSE_CLIENT_ID","NEXT_PUBLIC_API_URL","NEXT_PUBLIC_AUTH_URL"]'
+            build-env-keys: '["NEXT_PUBLIC_GA_MEASUREMENT_ID","NEXT_PUBLIC_ADSENSE_CLIENT_ID","NEXT_PUBLIC_ADSENSE_BANNER_SLOT","NEXT_PUBLIC_ADSENSE_SIDEBAR_SLOT","NEXT_PUBLIC_ADSENSE_IN_ARTICLE_SLOT","NEXT_PUBLIC_API_URL","NEXT_PUBLIC_AUTH_URL"]'
