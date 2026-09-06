@@ -3,8 +3,10 @@ import {BrowserRouter} from "react-router-dom";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 import App from "./App";
 
-const getCurrentUser = vi.fn();
-const ensureCsrfToken = vi.fn();
+const {getCurrentUser, ensureCsrfToken} = vi.hoisted(() => ({
+    getCurrentUser: vi.fn(),
+    ensureCsrfToken: vi.fn(),
+}));
 
 vi.mock("@/utils/api", () => ({
     ensureCsrfToken,
