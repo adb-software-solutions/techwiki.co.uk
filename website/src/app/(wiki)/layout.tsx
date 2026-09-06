@@ -1,6 +1,5 @@
 import { SearchBox } from "@/components/wiki/SearchBox";
 import { UserMenu } from "@/components/wiki/UserMenu";
-import { SiteBannerAd, SiteSidebarAd } from "@/lib/analytics";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { getCategories } from "@/lib/wiki/api";
 import Link from "next/link";
@@ -64,8 +63,6 @@ export default async function WikiLayout({ children }: WikiLayoutProps) {
                     </div>
                 </nav>
 
-                <SiteBannerAd className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8" />
-
                 {/* Sidebar + Content */}
                 <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
                     <div className="flex gap-8">
@@ -94,7 +91,6 @@ export default async function WikiLayout({ children }: WikiLayoutProps) {
                                         </Link>
                                     ))}
                                 </nav>
-                                <SiteSidebarAd className="mt-8" />
                             </div>
                         </aside>
 
