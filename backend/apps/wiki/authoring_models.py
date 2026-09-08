@@ -19,7 +19,8 @@ class AuthoringApiToken(models.Model):
     """Revocable scoped token for the private authoring API.
 
     Only a SHA-256 digest is stored. The raw bearer token is returned once when
-    issued and cannot be recovered from the database.
+    issued and cannot be recovered from the database. OAuth tokens may be bound
+    to a specific MCP resource; personal API tokens remain unbound.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -73,11 +74,18 @@ class AuthoringApiToken(models.Model):
         return token, raw
 
     @classmethod
-    def authenticate(cls, raw: str) -> "AuthoringApiToken | None":
+    def authenticate(
+        cls,
+        raw: str,
+        *,
+        resource: str | None = "",
+    ) -> "AuthoringApiToken | None":
         if not raw.startswith("tw_auth_"):
             return None
         token = cls.objects.select_related("user").filter(token_hash=_token_digest(raw)).first()
         if not token or not token.is_active:
+            return None
+        if resource is not None and token.resource != resource:
             return None
         token.last_used_at = timezone.now()
         token.save(update_fields=["last_used_at"])
