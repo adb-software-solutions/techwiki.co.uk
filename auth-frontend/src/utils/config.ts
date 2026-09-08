@@ -12,6 +12,7 @@ const ALLOWED_REDIRECT_ORIGINS = [
     import.meta.env.VITE_ADMIN_URL || "https://admin.techwiki.co.uk",
     import.meta.env.VITE_DOCS_URL || "https://docs.techwiki.co.uk",
     import.meta.env.VITE_AUTH_URL || "https://auth.techwiki.co.uk",
+    API_URL,
 ];
 
 /**

@@ -8,6 +8,7 @@ from ninja.errors import HttpError
 from pydantic import ValidationError
 
 from apps.analytics.views import router as analytics_router
+from apps.wiki.authoring_api import authoring_router
 from apps.wiki.compatibility_views import compatibility_router
 from apps.wiki.views import wiki_router
 from authentication.admin_api import router as admin_router
@@ -30,6 +31,7 @@ api.add_router("/auth-service", auth_service_router)  # User auth (registration,
 api.add_router("/sessions", sessions_router)  # Session/device management
 api.add_router("/wiki", wiki_router)  # Wiki/documentation platform
 api.add_router("/wiki/compatibility", compatibility_router)  # Article verification metadata
+api.add_router("/authoring/v1", authoring_router)  # Owner-only programmatic authoring
 api.add_router("/analytics", analytics_router)  # Analytics tracking and dashboard
 
 
