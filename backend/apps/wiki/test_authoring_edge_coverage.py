@@ -133,7 +133,7 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
         return base64.b64encode(value).decode()
 
     def test_api_rejects_invalid_relationships_and_empty_values(self) -> None:
-        cases = [
+        cases: list[tuple[str, dict[str, object], int]] = [
             (
                 "/api/authoring/v1/categories",
                 {"name": "   "},
@@ -162,9 +162,7 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
                 {
                     "title": "Bad categories",
                     "content": "body",
-                    "category_ids": [
-                        "00000000-0000-0000-0000-000000000001"
-                    ],
+                    "category_ids": ["00000000-0000-0000-0000-000000000001"],
                 },
                 422,
             ),
@@ -222,30 +220,18 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
         )
         self.assertEqual(duplicate.status_code, 409)
 
-        updates = [
+        updates: list[tuple[dict[str, object], int]] = [
             ({"article_type": "not-a-type"}, 422),
             (
-                {
-                    "category_id": (
-                        "00000000-0000-0000-0000-000000000001"
-                    )
-                },
+                {"category_id": "00000000-0000-0000-0000-000000000001"},
                 404,
             ),
             (
-                {
-                    "category_ids": [
-                        "00000000-0000-0000-0000-000000000001"
-                    ]
-                },
+                {"category_ids": ["00000000-0000-0000-0000-000000000001"]},
                 422,
             ),
             (
-                {
-                    "tag_ids": [
-                        "00000000-0000-0000-0000-000000000001"
-                    ]
-                },
+                {"tag_ids": ["00000000-0000-0000-0000-000000000001"]},
                 422,
             ),
         ]
@@ -309,9 +295,7 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
                 response = self.client.get(f"/oauth/authorize?{query}")
                 self.assertEqual(response.status_code, 400)
 
-        restricted, _secret, _verifier, challenge = self._oauth_client(
-            [ARTICLE_READ]
-        )
+        restricted, _secret, _verifier, challenge = self._oauth_client([ARTICLE_READ])
         query = self._authorize_query(
             restricted,
             challenge,
@@ -493,9 +477,7 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
                 "jsonrpc": "2.0",
                 "id": 3,
                 "method": "tools/list",
-                "_meta": {
-                    "io.modelcontextprotocol/protocolVersion": "2026-07-28"
-                },
+                "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"},
             },
             HTTP_MCP_PROTOCOL_VERSION="2026-07-28",
             HTTP_MCP_METHOD="tools/list",
@@ -703,9 +685,7 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             ", ".join(self.token.scopes),
         )
         self.assertFalse(token_admin.has_add_permission(request))
-        self.assertFalse(
-            token_admin.has_delete_permission(request, self.token)
-        )
+        self.assertFalse(token_admin.has_delete_permission(request, self.token))
         self.assertFalse(client_admin.has_add_permission(request))
         self.assertFalse(client_admin.has_delete_permission(request))
         self.assertFalse(code_admin.has_add_permission(request))
