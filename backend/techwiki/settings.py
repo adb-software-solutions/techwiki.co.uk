@@ -14,6 +14,7 @@ import base64
 import binascii
 import logging
 import os
+import sys
 from pathlib import Path
 
 import django_stubs_ext
@@ -32,7 +33,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-if DEBUG:
+RUNNING_MYPY = Path(sys.argv[0]).name == "mypy"
+if DEBUG or RUNNING_MYPY:
     SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-techwiki-development-only")
 else:
     SECRET_KEY = os.environ["SECRET_KEY"]
