@@ -1,4 +1,5 @@
-import { getArticleByPath } from "@/lib/wiki/api";
+import { RelatedArticles } from "@/components/wiki/RelatedArticles";
+import { getArticleByPath, getArticles } from "@/lib/wiki/api";
 import type { Metadata } from "next";
 
 const BASE_URL = "https://techwiki.co.uk";
@@ -83,6 +84,19 @@ export default async function ArticleLayout({
     if (!response?.success || !response.article) return children;
 
     const article = response.article;
+    const relatedResponse = article.category
+        ? await getArticles({
+              category: article.category.slug,
+              page: 1,
+              per_page: 8,
+          }).catch(() => null)
+        : null;
+    const relatedArticles = relatedResponse?.success
+        ? relatedResponse.articles
+              .filter((candidate) => candidate.id !== article.id)
+              .slice(0, 4)
+        : [];
+
     const canonical = `${BASE_URL}${article.full_url}`;
     const authorName = article.author
         ? `${article.author.first_name} ${article.author.last_name}`.trim()
@@ -186,6 +200,7 @@ export default async function ArticleLayout({
                 </aside>
             )}
             {children}
+            <RelatedArticles articles={relatedArticles} />
         </>
     );
 }
