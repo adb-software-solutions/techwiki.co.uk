@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import os
+import secrets
 from datetime import timedelta
 from html import escape
 from urllib.parse import urlencode
@@ -36,14 +38,13 @@ def _issuer(request: HttpRequest) -> str:
     return request.build_absolute_uri("/").rstrip("/")
 
 
-def _owner_matches(request: HttpRequest) -> bool:
+def _is_owner_user(user) -> bool:
     owner_id = os.environ.get("TECHWIKI_AUTHORING_USER_ID", "").strip()
-    return bool(
-        owner_id
-        and request.user.is_authenticated
-        and request.user.is_active
-        and str(request.user.id) == owner_id
-    )
+    return bool(owner_id and user.is_active and str(user.id) == owner_id)
+
+
+def _owner_matches(request: HttpRequest) -> bool:
+    return bool(request.user.is_authenticated and _is_owner_user(request.user))
 
 
 def _oauth_error(error: str, description: str, status: int = 400) -> JsonResponse:
@@ -55,8 +56,6 @@ def _oauth_error(error: str, description: str, status: int = 400) -> JsonRespons
 
 def _requested_scopes(value: str) -> list[str]:
     scopes = [scope for scope in value.split() if scope]
-    if not scopes:
-        scopes = sorted(SAFE_AUTHORING_SCOPES)
     if set(scopes) - OAUTH_SCOPES:
         raise ValueError("One or more requested scopes are not supported")
     return sorted(set(scopes))
@@ -83,7 +82,8 @@ def _validate_authorization_request(request: HttpRequest):
     if not code_challenge or challenge_method != "S256":
         raise ValueError("PKCE with code_challenge_method=S256 is required")
 
-    scopes = _requested_scopes(request.GET.get("scope", ""))
+    scope_value = request.GET.get("scope", "").strip()
+    scopes = _requested_scopes(scope_value) if scope_value else sorted(set(client.scopes))
     requested_authoring_scopes = set(scopes) - {OFFLINE_ACCESS}
     if requested_authoring_scopes - set(client.scopes):
         raise ValueError("OAuth client is not permitted to request one or more scopes")
@@ -104,19 +104,6 @@ def oauth_authorization_server_metadata(request: HttpRequest) -> JsonResponse:
             "code_challenge_methods_supported": ["S256"],
             "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
             "scopes_supported": sorted(OAUTH_SCOPES),
-        }
-    )
-
-
-@require_GET
-def oauth_protected_resource_metadata(request: HttpRequest) -> JsonResponse:
-    issuer = _issuer(request)
-    return JsonResponse(
-        {
-            "resource": f"{issuer}/api/authoring/v1/mcp",
-            "authorization_servers": [issuer],
-            "scopes_supported": sorted(SAFE_AUTHORING_SCOPES),
-            "bearer_methods_supported": ["header"],
         }
     )
 
@@ -180,10 +167,13 @@ def _client_credentials(request: HttpRequest) -> tuple[str, str]:
     authorization = request.headers.get("Authorization", "")
     if authorization.startswith("Basic "):
         try:
-            decoded = base64.b64decode(authorization[6:]).decode("utf-8")
-            return tuple(decoded.split(":", 1))  # type: ignore[return-value]
-        except (ValueError, UnicodeDecodeError):
+            decoded = base64.b64decode(authorization[6:], validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError, ValueError):
             return "", ""
+        parts = decoded.split(":", 1)
+        if len(parts) != 2:
+            return "", ""
+        return parts[0], parts[1]
     return request.POST.get("client_id", ""), request.POST.get("client_secret", "")
 
 
@@ -196,9 +186,14 @@ def _authenticated_client(request: HttpRequest) -> AuthoringOAuthClient | None:
 
 
 def _pkce_matches(verifier: str, challenge: str) -> bool:
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    if not 43 <= len(verifier) <= 128:
+        return False
+    try:
+        digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    except UnicodeEncodeError:
+        return False
     encoded = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    return encoded == challenge
+    return secrets.compare_digest(encoded, challenge)
 
 
 def _issue_token_response(
@@ -208,6 +203,9 @@ def _issue_token_response(
     scopes: list[str],
     include_refresh: bool,
 ) -> JsonResponse:
+    if not _is_owner_user(user):
+        return _oauth_error("access_denied", "The configured authoring owner is no longer available", 403)
+
     authoring_scopes = sorted(set(scopes) - {OFFLINE_ACCESS})
     _token, raw_access = AuthoringApiToken.issue(
         user=user,
@@ -254,7 +252,7 @@ def oauth_token(request: HttpRequest) -> JsonResponse:
         if request.POST.get("redirect_uri", "") != code.redirect_uri:
             return _oauth_error("invalid_grant", "Redirect URI does not match the authorization request")
         verifier = request.POST.get("code_verifier", "")
-        if not verifier or not _pkce_matches(verifier, code.code_challenge):
+        if not _pkce_matches(verifier, code.code_challenge):
             return _oauth_error("invalid_grant", "PKCE verification failed")
 
         code.used_at = timezone.now()
@@ -271,6 +269,8 @@ def oauth_token(request: HttpRequest) -> JsonResponse:
         refresh_token = AuthoringOAuthRefreshToken.find(raw_refresh)
         if not refresh_token or refresh_token.client_id != client.id or not refresh_token.is_active:
             return _oauth_error("invalid_grant", "Refresh token is invalid or expired")
+        if not _is_owner_user(refresh_token.user):
+            return _oauth_error("access_denied", "The configured authoring owner is no longer available", 403)
         refresh_token.revoked_at = timezone.now()
         refresh_token.save(update_fields=["revoked_at"])
         return _issue_token_response(
@@ -292,7 +292,7 @@ def oauth_revoke(request: HttpRequest) -> HttpResponse:
 
     raw = request.POST.get("token", "")
     access = AuthoringApiToken.authenticate(raw)
-    if access:
+    if access and _is_owner_user(access.user):
         access.revoked_at = timezone.now()
         access.save(update_fields=["revoked_at"])
     refresh = AuthoringOAuthRefreshToken.find(raw) if raw else None
