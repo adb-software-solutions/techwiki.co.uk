@@ -6,9 +6,11 @@ import base64
 import hashlib
 import json
 import os
-from urllib.parse import parse_qs, urlencode, urlparse
+from typing import Any
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlencode, urlparse
 
+from django.http import HttpResponse
 from django.test import TestCase
 
 from apps.wiki.authoring_api import (
@@ -61,10 +63,15 @@ class PrivateAuthoringCoverageTests(TestCase):
         self.tag = Tag.objects.create(name="Docker", slug="docker")
 
     @property
-    def bearer(self) -> dict[str, str]:
+    def bearer(self) -> dict[str, Any]:
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_token}"}
 
-    def _post_json(self, path: str, payload: dict[str, object], **headers: str):
+    def _post_json(
+        self,
+        path: str,
+        payload: dict[str, object],
+        **headers: Any,
+    ) -> HttpResponse:
         return self.client.post(
             path,
             data=json.dumps(payload),
@@ -72,7 +79,12 @@ class PrivateAuthoringCoverageTests(TestCase):
             **headers,
         )
 
-    def _patch_json(self, path: str, payload: dict[str, object], **headers: str):
+    def _patch_json(
+        self,
+        path: str,
+        payload: dict[str, object],
+        **headers: Any,
+    ) -> HttpResponse:
         return self.client.patch(
             path,
             data=json.dumps(payload),
@@ -80,7 +92,12 @@ class PrivateAuthoringCoverageTests(TestCase):
             **headers,
         )
 
-    def _put_json(self, path: str, payload: dict[str, object], **headers: str):
+    def _put_json(
+        self,
+        path: str,
+        payload: dict[str, object],
+        **headers: Any,
+    ) -> HttpResponse:
         return self.client.put(
             path,
             data=json.dumps(payload),
@@ -390,7 +407,7 @@ class PrivateAuthoringCoverageTests(TestCase):
         self.assertEqual(invalid_token_client.json()["error"], "invalid_client")
 
     def test_oauth_denial_refresh_rotation_and_revocation(self) -> None:
-        client, secret, verifier, challenge = self._oauth_client()
+        client, _secret, _verifier, challenge = self._oauth_client()
         self.client.force_login(self.user)
         query = urlencode(
             {
