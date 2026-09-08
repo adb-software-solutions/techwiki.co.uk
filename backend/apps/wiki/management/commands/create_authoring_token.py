@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
@@ -39,7 +39,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options) -> None:
-        owner_id = getattr(settings, "TECHWIKI_AUTHORING_USER_ID", "")
+        owner_id = os.environ.get("TECHWIKI_AUTHORING_USER_ID", "").strip()
         if not owner_id:
             raise CommandError("TECHWIKI_AUTHORING_USER_ID must be configured before issuing a token.")
 
