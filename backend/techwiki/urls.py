@@ -12,6 +12,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from apps.wiki.authoring_mcp import authoring_mcp
 from apps.wiki.authoring_oauth import (
     oauth_authorization_server_metadata,
     oauth_authorize,
@@ -31,6 +32,7 @@ urlpatterns = [
     path("oauth/authorize", oauth_authorize),
     path("oauth/token", oauth_token),
     path("oauth/revoke", oauth_revoke),
+    path("admin-mcp", authoring_mcp),
     path("api/", api.urls),
 ]
 
