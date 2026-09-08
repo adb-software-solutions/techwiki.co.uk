@@ -10,10 +10,7 @@ const ADSENSE_CLIENT_ID = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
 export const metadata: Metadata = {
     metadataBase: new URL(SITE_URL),
     applicationName: "TechWiki",
-    title: {
-        default: "TechWiki",
-        template: "%s | TechWiki",
-    },
+    title: "TechWiki",
     description:
         "Practical technical documentation, tutorials, troubleshooting guides, and references for developers and system administrators.",
     alternates: {
