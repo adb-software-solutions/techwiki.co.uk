@@ -33,9 +33,7 @@ def _serialize(record: ArticleCompatibility) -> dict[str, Any]:
 
 
 @compatibility_router.get("/by-path/{path:path}", response={200: dict})
-def compatibility_by_path(
-    request: HttpRequest, path: str
-) -> tuple[int, dict[str, Any]]:
+def compatibility_by_path(request: HttpRequest, path: str) -> tuple[int, dict[str, Any]]:
     """Return version/environment verification records for a published article."""
     del request
     normalized = path.strip("/")

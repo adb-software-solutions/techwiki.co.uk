@@ -67,9 +67,7 @@ class Command(BaseCommand):
         if len(parts) == 1:
             if Category.objects.filter(slug=parts[0], is_active=True).exists():
                 return None
-            if Article.objects.filter(
-                slug=parts[0], status=ArticleStatus.PUBLISHED
-            ).exists():
+            if Article.objects.filter(slug=parts[0], status=ArticleStatus.PUBLISHED).exists():
                 return None
             return "no matching category, article, or static route"
 

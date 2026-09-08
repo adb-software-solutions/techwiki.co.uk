@@ -63,9 +63,7 @@ class Command(BaseCommand):
 
     def _audit_article(self, article: Article) -> dict[str, Any]:
         word_count = len(article.content.split())
-        age_days = (
-            timezone.now() - (article.updated_at or article.created_at)
-        ).days
+        age_days = (timezone.now() - (article.updated_at or article.created_at)).days
         issues: list[str] = []
 
         if word_count < 150:
@@ -159,9 +157,9 @@ class Command(BaseCommand):
             f"{'Grade':<5} {'Words':>6} {'Age':>6}  {'Action':<24} Title",
             "-" * 100,
         ]
-        for row in rows:
-            lines.append(
-                f"{row['grade']:<5} {row['word_count']:>6} {row['age_days']:>5}d  "
-                f"{row['recommended_action']:<24} {row['title']}"
-            )
+        lines.extend(
+            f"{row['grade']:<5} {row['word_count']:>6} {row['age_days']:>5}d  "
+            f"{row['recommended_action']:<24} {row['title']}"
+            for row in rows
+        )
         return "\n".join(lines)

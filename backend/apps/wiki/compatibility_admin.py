@@ -6,7 +6,7 @@ from apps.wiki.compatibility import ArticleCompatibility
 
 
 @admin.register(ArticleCompatibility)
-class ArticleCompatibilityAdmin(admin.ModelAdmin):
+class ArticleCompatibilityAdmin(admin.ModelAdmin[ArticleCompatibility]):
     """Manage tested-version metadata for published technical content."""
 
     list_display = (
