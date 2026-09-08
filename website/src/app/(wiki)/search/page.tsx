@@ -15,6 +15,14 @@ export async function generateMetadata({
     return {
         title: q ? `Search: ${q} | TechWiki` : "Search | TechWiki",
         description: "Search TechWiki for documentation, tutorials, and guides",
+        robots: {
+            index: false,
+            follow: true,
+            googleBot: {
+                index: false,
+                follow: true,
+            },
+        },
     };
 }
 
