@@ -119,6 +119,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "ninja.compatibility.files.fix_request_files_middleware",
+    "apps.wiki.middleware.SanitizeRenderedHtmlMiddleware",
 ]
 
 if DEBUG_TOOLBAR_ENABLED:
