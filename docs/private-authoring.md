@@ -15,10 +15,10 @@ Every mutation is written to `AuthoringAuditLog`. Personal and OAuth access toke
 Issue a personal authoring token:
 
 ```bash
-python manage.py create_authoring_token "ChatGPT authoring" --user-id <owner-uuid>
+python manage.py create_authoring_token --name "ChatGPT authoring"
 ```
 
-The command prints the raw token once. Send it as:
+The command resolves the owner from `TECHWIKI_AUTHORING_USER_ID` and prints the raw token once. Send it as:
 
 ```text
 Authorization: Bearer tw_auth_...
