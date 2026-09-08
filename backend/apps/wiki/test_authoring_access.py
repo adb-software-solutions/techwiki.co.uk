@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+from urllib.parse import parse_qs, urlencode, urlparse
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -60,6 +61,19 @@ class AuthoringAccessTests(TestCase):
         self.assertEqual(article.status, ArticleStatus.DRAFT)
         self.assertEqual(article.author, self.user)
 
+    def test_rest_api_rejects_mcp_bound_token(self) -> None:
+        _token, raw = AuthoringApiToken.issue(
+            user=self.user,
+            name="OAuth test",
+            scopes=[ARTICLE_READ],
+            resource="http://testserver/admin-mcp",
+        )
+        response = self.client.get(
+            "/api/authoring/v1/",
+            HTTP_AUTHORIZATION=f"Bearer {raw}",
+        )
+        self.assertEqual(response.status_code, 401)
+
     def test_mcp_advertises_oauth_when_unauthorized(self) -> None:
         response = self.client.post(
             "/admin-mcp",
@@ -82,8 +96,8 @@ class AuthoringAccessTests(TestCase):
         self.assertIn("create_category", names)
         self.assertNotIn("publish_article", names)
 
-    def test_oauth_authorization_requires_owner_login(self) -> None:
-        client, _secret = AuthoringOAuthClient.issue(
+    def _oauth_client(self) -> tuple[AuthoringOAuthClient, str, str, str]:
+        client, secret = AuthoringOAuthClient.issue(
             name="ChatGPT",
             redirect_uris=["https://chatgpt.com/aip/callback"],
             scopes=[ARTICLE_READ],
@@ -94,6 +108,10 @@ class AuthoringAccessTests(TestCase):
             .rstrip(b"=")
             .decode("ascii")
         )
+        return client, secret, verifier, challenge
+
+    def test_oauth_authorization_requires_owner_login(self) -> None:
+        client, _secret, _verifier, challenge = self._oauth_client()
         response = self.client.get(
             "/oauth/authorize",
             {
@@ -101,6 +119,7 @@ class AuthoringAccessTests(TestCase):
                 "redirect_uri": "https://chatgpt.com/aip/callback",
                 "response_type": "code",
                 "scope": f"{ARTICLE_READ} offline_access",
+                "resource": "http://testserver/admin-mcp",
                 "code_challenge": challenge,
                 "code_challenge_method": "S256",
                 "state": "test-state",
@@ -108,6 +127,61 @@ class AuthoringAccessTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login?", response.headers["Location"])
+
+    def test_oauth_code_exchange_binds_access_token_to_mcp(self) -> None:
+        client, secret, verifier, challenge = self._oauth_client()
+        self.client.force_login(self.user)
+        query = urlencode(
+            {
+                "client_id": client.client_id,
+                "redirect_uri": "https://chatgpt.com/aip/callback",
+                "response_type": "code",
+                "scope": f"{ARTICLE_READ} offline_access",
+                "resource": "http://testserver/admin-mcp",
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+                "state": "state-value",
+            }
+        )
+        authorization = self.client.post(f"/oauth/authorize?{query}", {"decision": "allow"})
+        self.assertEqual(authorization.status_code, 302)
+        redirect_query = parse_qs(urlparse(authorization.headers["Location"]).query)
+        self.assertEqual(redirect_query["state"], ["state-value"])
+        self.assertEqual(redirect_query["iss"], ["http://testserver"])
+        code = redirect_query["code"][0]
+
+        basic = base64.b64encode(f"{client.client_id}:{secret}".encode()).decode()
+        token_response = self.client.post(
+            "/oauth/token",
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": "https://chatgpt.com/aip/callback",
+                "code_verifier": verifier,
+                "resource": "http://testserver/admin-mcp",
+            },
+            HTTP_AUTHORIZATION=f"Basic {basic}",
+        )
+        self.assertEqual(token_response.status_code, 200)
+        payload = token_response.json()
+        self.assertEqual(payload["resource"], "http://testserver/admin-mcp")
+        self.assertIn("refresh_token", payload)
+
+        access = payload["access_token"]
+        self.assertEqual(
+            self.client.get(
+                "/api/authoring/v1/",
+                HTTP_AUTHORIZATION=f"Bearer {access}",
+            ).status_code,
+            401,
+        )
+        mcp_response = self.client.post(
+            "/admin-mcp",
+            data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(mcp_response.status_code, 200)
 
     def test_oauth_metadata_points_to_private_mcp(self) -> None:
         response = self.client.get("/.well-known/oauth-protected-resource")
