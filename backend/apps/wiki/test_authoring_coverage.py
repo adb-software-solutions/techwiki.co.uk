@@ -10,7 +10,6 @@ from typing import Any
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlencode, urlparse
 
-from django.http import HttpResponse
 from django.test import TestCase
 
 from apps.wiki.authoring_api import (
@@ -71,7 +70,7 @@ class PrivateAuthoringCoverageTests(TestCase):
         path: str,
         payload: dict[str, object],
         **headers: Any,
-    ) -> HttpResponse:
+    ) -> Any:
         return self.client.post(
             path,
             data=json.dumps(payload),
@@ -84,7 +83,7 @@ class PrivateAuthoringCoverageTests(TestCase):
         path: str,
         payload: dict[str, object],
         **headers: Any,
-    ) -> HttpResponse:
+    ) -> Any:
         return self.client.patch(
             path,
             data=json.dumps(payload),
@@ -97,7 +96,7 @@ class PrivateAuthoringCoverageTests(TestCase):
         path: str,
         payload: dict[str, object],
         **headers: Any,
-    ) -> HttpResponse:
+    ) -> Any:
         return self.client.put(
             path,
             data=json.dumps(payload),
