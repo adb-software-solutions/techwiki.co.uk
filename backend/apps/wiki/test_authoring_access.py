@@ -24,6 +24,7 @@ class AuthoringAccessTests(TestCase):
             password="strong-test-password",
             first_name="Owner",
             last_name="User",
+            email_verified=True,
         )
         self.owner_patch = patch.dict(os.environ, {"TECHWIKI_AUTHORING_USER_ID": str(self.user.id)})
         self.owner_patch.start()
