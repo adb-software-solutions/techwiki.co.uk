@@ -22,7 +22,7 @@ class ArticleHtmlSanitizerTests(SimpleTestCase):
         value = (
             '<h2 id="setup">Setup</h2><pre><code class="language-python">'
             'print(&quot;hello&quot;)</code></pre><table><tbody><tr><td colspan="2">OK</td>'
-            '</tr></tbody></table>'
+            "</tr></tbody></table>"
         )
 
         self.assertEqual(sanitize_html(value), value)
@@ -36,6 +36,8 @@ class ArticleHtmlSanitizerTests(SimpleTestCase):
         )
 
     def test_drops_dangerous_embedded_containers(self) -> None:
-        value = '<p>Before</p><iframe src="https://example.com"><script>x</script></iframe><p>After</p>'
+        value = (
+            '<p>Before</p><iframe src="https://example.com"><script>x</script></iframe><p>After</p>'
+        )
 
         self.assertEqual(sanitize_html(value), "<p>Before</p><p>After</p>")

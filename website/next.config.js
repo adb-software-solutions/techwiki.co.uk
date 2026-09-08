@@ -29,8 +29,7 @@ const nextConfig = {
         return [
             {
                 source: "/:category/:slug.md",
-                destination:
-                    "/api/content/v1/markdown?path=:category/:slug",
+                destination: "/api/content/v1/markdown?path=:category/:slug",
             },
             {
                 source: "/:parent/:category/:slug.md",

@@ -15,7 +15,9 @@ def _sanitize_rendered_html(value: Any) -> Any:
     """Recursively sanitise rendered_html values without altering Markdown source."""
     if isinstance(value, dict):
         return {
-            key: sanitize_html(item) if key == "rendered_html" and isinstance(item, str) else _sanitize_rendered_html(item)
+            key: sanitize_html(item)
+            if key == "rendered_html" and isinstance(item, str)
+            else _sanitize_rendered_html(item)
             for key, item in value.items()
         }
     if isinstance(value, list):

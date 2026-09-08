@@ -41,7 +41,10 @@ export async function GET(): Promise<Response> {
         "## Recent articles",
         "",
         ...articles.slice(0, 30).map((article) => {
-            const category = article.category?.full_path || article.category?.slug || "articles";
+            const category =
+                article.category?.full_path ||
+                article.category?.slug ||
+                "articles";
             return `- [${article.title}](${BASE_URL}/${category}/${article.slug}): ${article.excerpt || `${article.article_type} article.`}`;
         }),
         "",

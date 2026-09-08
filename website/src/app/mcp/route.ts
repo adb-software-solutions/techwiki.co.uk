@@ -128,7 +128,10 @@ async function callTool(name: string, args: Record<string, unknown>) {
     if (name === "search_articles") {
         const query = argumentString(args, "query");
         if (!query || query.length < 2) throw new Error("query is required");
-        const limit = Math.min(Math.max(argumentNumber(args, "limit") || 10, 1), 50);
+        const limit = Math.min(
+            Math.max(argumentNumber(args, "limit") || 10, 1),
+            50,
+        );
         const response = await searchArticles({
             q: query,
             category: argumentString(args, "category"),
@@ -161,7 +164,10 @@ async function callTool(name: string, args: Record<string, unknown>) {
     if (name === "troubleshoot") {
         const query = argumentString(args, "query");
         if (!query || query.length < 2) throw new Error("query is required");
-        const limit = Math.min(Math.max(argumentNumber(args, "limit") || 10, 1), 20);
+        const limit = Math.min(
+            Math.max(argumentNumber(args, "limit") || 10, 1),
+            20,
+        );
         const response = await searchArticles({
             q: query,
             page: 1,
