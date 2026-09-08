@@ -25,6 +25,20 @@ const nextConfig = {
             },
         ],
     },
+    async rewrites() {
+        return [
+            {
+                source: "/:category/:slug.md",
+                destination:
+                    "/api/content/v1/markdown?path=:category/:slug",
+            },
+            {
+                source: "/:parent/:category/:slug.md",
+                destination:
+                    "/api/content/v1/markdown?path=:parent/:category/:slug",
+            },
+        ];
+    },
 };
 
 module.exports = nextConfig;
