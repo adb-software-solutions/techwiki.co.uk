@@ -9,7 +9,6 @@ import os
 from unittest.mock import patch
 
 from django.test import TestCase
-from django.urls import reverse
 
 from apps.wiki.authoring_api import ARTICLE_CREATE, ARTICLE_READ, CATEGORY_CREATE, CATEGORY_READ
 from apps.wiki.authoring_models import AuthoringApiToken, AuthoringOAuthClient
