@@ -9,3 +9,12 @@ class WikiConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.wiki"
     verbose_name = "TechWiki"
+
+    def import_models(self) -> None:
+        """Register models that live outside the legacy models.py module."""
+        super().import_models()
+        from apps.wiki import compatibility  # noqa: F401, PLC0415
+
+    def ready(self) -> None:
+        """Register compatibility metadata with the Django admin."""
+        from apps.wiki import compatibility_admin  # noqa: F401, PLC0415

@@ -2,10 +2,38 @@ import { getArticleByPath } from "@/lib/wiki/api";
 import type { Metadata } from "next";
 
 const BASE_URL = "https://techwiki.co.uk";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface ArticleLayoutProps {
     children: React.ReactNode;
     params: Promise<{ category: string; slug: string }>;
+}
+
+interface CompatibilityRecord {
+    id: string;
+    technology: string;
+    version: string;
+    environment: string;
+    status: "verified" | "partial" | "known_issue";
+    notes: string;
+    verified_at: string;
+}
+
+async function getCompatibility(path: string): Promise<CompatibilityRecord[]> {
+    try {
+        const response = await fetch(
+            `${API_BASE}/api/wiki/compatibility/by-path/${path}`,
+            { next: { revalidate: 60 } },
+        );
+        if (!response.ok) return [];
+        const data = (await response.json()) as {
+            success: boolean;
+            records?: CompatibilityRecord[];
+        };
+        return data.success ? data.records || [] : [];
+    } catch {
+        return [];
+    }
 }
 
 export async function generateMetadata({
@@ -46,9 +74,11 @@ export default async function ArticleLayout({
     params,
 }: ArticleLayoutProps) {
     const { category, slug } = await params;
-    const response = await getArticleByPath(`${category}/${slug}`).catch(
-        () => null,
-    );
+    const articlePath = `${category}/${slug}`;
+    const [response, compatibility] = await Promise.all([
+        getArticleByPath(articlePath).catch(() => null),
+        getCompatibility(articlePath),
+    ]);
 
     if (!response?.success || !response.article) return children;
 
@@ -86,6 +116,11 @@ export default async function ArticleLayout({
             "@id": `${BASE_URL}/#organization`,
         },
         image: article.featured_image_url || undefined,
+        about: compatibility.map((record) => ({
+            "@type": "Thing",
+            name: [record.technology, record.version].filter(Boolean).join(" "),
+            description: record.environment || record.notes || undefined,
+        })),
     };
 
     const breadcrumbStructuredData = {
@@ -127,6 +162,29 @@ export default async function ArticleLayout({
                     __html: JSON.stringify(breadcrumbStructuredData),
                 }}
             />
+            {compatibility.length > 0 && (
+                <aside className="mx-auto mb-6 max-w-4xl rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
+                    <h2 className="text-sm font-semibold tracking-wide text-emerald-300 uppercase">
+                        Tested with
+                    </h2>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        {compatibility.map((record) => (
+                            <span
+                                key={record.id}
+                                title={record.notes || record.environment}
+                                className="rounded-md border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-sm text-gray-300"
+                            >
+                                {record.technology}
+                                {record.version ? ` ${record.version}` : ""}
+                                {record.environment
+                                    ? ` · ${record.environment}`
+                                    : ""}
+                                {` · verified ${new Date(record.verified_at).toLocaleDateString("en-GB")}`}
+                            </span>
+                        ))}
+                    </div>
+                </aside>
+            )}
             {children}
         </>
     );

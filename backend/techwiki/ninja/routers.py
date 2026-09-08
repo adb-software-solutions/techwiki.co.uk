@@ -8,6 +8,7 @@ from ninja.errors import HttpError
 from pydantic import ValidationError
 
 from apps.analytics.views import router as analytics_router
+from apps.wiki.compatibility_views import compatibility_router
 from apps.wiki.views import wiki_router
 from authentication.admin_api import router as admin_router
 from authentication.auth_service.views import auth_service_router
@@ -28,6 +29,7 @@ api.add_router("/admin", admin_router)  # Admin dashboard and user management
 api.add_router("/auth-service", auth_service_router)  # User auth (registration, login, 2FA, etc.)
 api.add_router("/sessions", sessions_router)  # Session/device management
 api.add_router("/wiki", wiki_router)  # Wiki/documentation platform
+api.add_router("/wiki/compatibility", compatibility_router)  # Article verification metadata
 api.add_router("/analytics", analytics_router)  # Analytics tracking and dashboard
 
 
@@ -38,7 +40,6 @@ def get_csrf_token(request: HttpRequest) -> JsonResponse:
 
     The @ensure_csrf_cookie decorator ensures the CSRF cookie is set in the response.
     """
-    # This will set the CSRF cookie and return the token value
     token = get_token(request)
     return JsonResponse({"csrf_token": token})
 
