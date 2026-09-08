@@ -32,6 +32,7 @@ class AuthoringApiToken(models.Model):
     token_prefix = models.CharField(max_length=16, db_index=True)
     token_hash = models.CharField(max_length=64, unique=True)
     scopes = models.JSONField(default=list)
+    resource = models.URLField(max_length=500, blank=True, default="")
     expires_at = models.DateTimeField(null=True, blank=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
@@ -56,6 +57,7 @@ class AuthoringApiToken(models.Model):
         user,
         name: str,
         scopes: list[str],
+        resource: str = "",
         expires_at=None,
     ) -> tuple["AuthoringApiToken", str]:
         raw = f"tw_auth_{secrets.token_urlsafe(40)}"
@@ -65,6 +67,7 @@ class AuthoringApiToken(models.Model):
             token_prefix=raw[:16],
             token_hash=_token_digest(raw),
             scopes=sorted(set(scopes)),
+            resource=resource,
             expires_at=expires_at,
         )
         return token, raw
@@ -138,6 +141,7 @@ class AuthoringOAuthCode(models.Model):
     )
     code_hash = models.CharField(max_length=64, unique=True)
     redirect_uri = models.URLField(max_length=500)
+    resource = models.URLField(max_length=500)
     scopes = models.JSONField(default=list)
     code_challenge = models.CharField(max_length=128)
     expires_at = models.DateTimeField()
@@ -151,6 +155,7 @@ class AuthoringOAuthCode(models.Model):
         client: AuthoringOAuthClient,
         user,
         redirect_uri: str,
+        resource: str,
         scopes: list[str],
         code_challenge: str,
         expires_at,
@@ -161,6 +166,7 @@ class AuthoringOAuthCode(models.Model):
             user=user,
             code_hash=_token_digest(raw),
             redirect_uri=redirect_uri,
+            resource=resource,
             scopes=sorted(set(scopes)),
             code_challenge=code_challenge,
             expires_at=expires_at,
@@ -189,6 +195,7 @@ class AuthoringOAuthRefreshToken(models.Model):
     token_prefix = models.CharField(max_length=16, db_index=True)
     token_hash = models.CharField(max_length=64, unique=True)
     scopes = models.JSONField(default=list)
+    resource = models.URLField(max_length=500)
     expires_at = models.DateTimeField()
     revoked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -204,6 +211,7 @@ class AuthoringOAuthRefreshToken(models.Model):
         client: AuthoringOAuthClient,
         user,
         scopes: list[str],
+        resource: str,
         expires_at,
     ) -> tuple["AuthoringOAuthRefreshToken", str]:
         raw = f"tw_refresh_{secrets.token_urlsafe(40)}"
@@ -213,6 +221,7 @@ class AuthoringOAuthRefreshToken(models.Model):
             token_prefix=raw[:16],
             token_hash=_token_digest(raw),
             scopes=sorted(set(scopes)),
+            resource=resource,
             expires_at=expires_at,
         )
         return token, raw
