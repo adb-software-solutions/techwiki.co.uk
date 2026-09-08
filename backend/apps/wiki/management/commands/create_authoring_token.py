@@ -8,19 +8,11 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
+from apps.wiki.authoring_api import SAFE_AUTHORING_SCOPES
 from apps.wiki.authoring_models import AuthoringApiToken
 from authentication.models import User
 
-DEFAULT_SCOPES = [
-    "articles:read",
-    "articles:draft:create",
-    "articles:draft:update",
-    "categories:read",
-    "categories:create",
-    "tags:read",
-    "tags:create",
-    "compatibility:write",
-]
+DEFAULT_SCOPES = sorted(SAFE_AUTHORING_SCOPES)
 
 
 class Command(BaseCommand):
@@ -53,6 +45,10 @@ class Command(BaseCommand):
             raise CommandError("--days must be greater than zero.")
 
         scopes = options["scopes"] or DEFAULT_SCOPES
+        invalid = sorted(set(scopes) - SAFE_AUTHORING_SCOPES)
+        if invalid:
+            raise CommandError(f"Unsupported scopes: {', '.join(invalid)}")
+
         expires_at = timezone.now() + timedelta(days=days)
         token, raw = AuthoringApiToken.issue(
             user=owner,
