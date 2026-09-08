@@ -323,6 +323,8 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
         other = User.objects.create_user(
             email="not-owner@example.com",
             password="strong-test-password",
+            first_name="Other",
+            last_name="User",
             email_verified=True,
         )
         self.client.force_login(other)
