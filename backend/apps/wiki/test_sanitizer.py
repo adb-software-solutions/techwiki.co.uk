@@ -24,8 +24,13 @@ class ArticleHtmlSanitizerTests(SimpleTestCase):
             'print(&quot;hello&quot;)</code></pre><table><tbody><tr><td colspan="2">OK</td>'
             "</tr></tbody></table>"
         )
+        expected = (
+            '<h2 id="setup">Setup</h2><pre><code class="language-python">'
+            'print("hello")</code></pre><table><tbody><tr><td colspan="2">OK</td>'
+            "</tr></tbody></table>"
+        )
 
-        self.assertEqual(sanitize_html(value), value)
+        self.assertEqual(sanitize_html(value), expected)
 
     def test_hardens_external_blank_links(self) -> None:
         value = '<a href="https://example.com" target="_blank">Example</a>'
