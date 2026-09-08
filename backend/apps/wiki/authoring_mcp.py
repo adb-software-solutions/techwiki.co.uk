@@ -13,6 +13,14 @@ from django.views.decorators.http import require_http_methods
 from ninja.errors import HttpError
 
 from apps.wiki.authoring_api import (
+    ARTICLE_CREATE,
+    ARTICLE_READ,
+    ARTICLE_UPDATE,
+    CATEGORY_CREATE,
+    CATEGORY_READ,
+    COMPATIBILITY_WRITE,
+    TAG_CREATE,
+    TAG_READ,
     ArticleDraftCreatePayload,
     ArticleDraftUpdatePayload,
     CategoryCreatePayload,
@@ -185,6 +193,19 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+TOOL_SCOPES = {
+    "search_articles": ARTICLE_READ,
+    "get_article": ARTICLE_READ,
+    "create_article_draft": ARTICLE_CREATE,
+    "update_article_draft": ARTICLE_UPDATE,
+    "validate_article": ARTICLE_READ,
+    "list_categories": CATEGORY_READ,
+    "create_category": CATEGORY_CREATE,
+    "list_tags": TAG_READ,
+    "create_tag": TAG_CREATE,
+    "set_article_compatibility": COMPATIBILITY_WRITE,
+}
+
 
 def _json_rpc_result(request_id: Any, result: Any) -> JsonResponse:
     return JsonResponse({"jsonrpc": "2.0", "id": request_id, "result": result})
@@ -201,9 +222,12 @@ def _authenticate(request: HttpRequest) -> AuthoringApiToken | None:
     authorization = request.headers.get("Authorization", "")
     if not authorization.startswith("Bearer "):
         return None
-    credential = AuthoringApiToken.authenticate(authorization[7:].strip())
+    credential = AuthoringApiToken.authenticate(authorization[7:].strip(), resource=None)
     owner_id = os.environ.get("TECHWIKI_AUTHORING_USER_ID", "").strip()
+    expected_resource = request.build_absolute_uri("/admin-mcp")
     if not credential or not owner_id or str(credential.user_id) != owner_id:
+        return None
+    if credential.resource and credential.resource != expected_resource:
         return None
     if not credential.user.is_active:
         return None
@@ -215,6 +239,15 @@ def _unauthorized(request: HttpRequest) -> HttpResponse:
     metadata_url = request.build_absolute_uri("/.well-known/oauth-protected-resource")
     response = JsonResponse({"error": "authorization_required"}, status=401)
     response["WWW-Authenticate"] = f'Bearer resource_metadata="{metadata_url}"'
+    return response
+
+
+def _insufficient_scope(request: HttpRequest, scope: str) -> HttpResponse:
+    metadata_url = request.build_absolute_uri("/.well-known/oauth-protected-resource")
+    response = JsonResponse({"error": "insufficient_scope", "required_scope": scope}, status=403)
+    response["WWW-Authenticate"] = (
+        f'Bearer error="insufficient_scope", scope="{scope}", resource_metadata="{metadata_url}"'
+    )
     return response
 
 
@@ -276,10 +309,42 @@ def _call_tool(request: HttpRequest, name: str, args: dict[str, Any]) -> Any:
     raise HttpError(404, f"Unknown tool: {name}")
 
 
+def _validate_modern_request(request: HttpRequest, body: dict[str, Any], method: str) -> HttpResponse | None:
+    request_id = body.get("id")
+    if request.headers.get("Mcp-Method") != method:
+        return _json_rpc_error(
+            request_id,
+            -32020,
+            "Mcp-Method header must match the JSON-RPC method",
+            400,
+        )
+
+    meta = body.get("_meta")
+    if not isinstance(meta, dict) or meta.get("io.modelcontextprotocol/protocolVersion") != PROTOCOL_VERSION:
+        return _json_rpc_error(request_id, -32600, "Modern MCP requests must include protocolVersion metadata", 400)
+    if "io.modelcontextprotocol/clientCapabilities" not in meta:
+        return _json_rpc_error(request_id, -32600, "Modern MCP requests must include clientCapabilities metadata", 400)
+
+    if method == "tools/call":
+        params = body.get("params")
+        if not isinstance(params, dict):
+            return _json_rpc_error(request_id, -32602, "Invalid tool parameters", 400)
+        tool_name = params.get("name")
+        if not isinstance(tool_name, str) or request.headers.get("Mcp-Name") != tool_name:
+            return _json_rpc_error(
+                request_id,
+                -32020,
+                "Mcp-Name header must match params.name",
+                400,
+            )
+    return None
+
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def authoring_mcp(request: HttpRequest) -> HttpResponse:
-    if not _authenticate(request):
+    credential = _authenticate(request)
+    if not credential:
         return _unauthorized(request)
 
     if request.method == "GET":
@@ -304,22 +369,9 @@ def authoring_mcp(request: HttpRequest) -> HttpResponse:
     method = str(body["method"])
     requested_version = request.headers.get("MCP-Protocol-Version", LEGACY_PROTOCOL_VERSION)
     if requested_version == PROTOCOL_VERSION:
-        if request.headers.get("Mcp-Method") != method:
-            return _json_rpc_error(
-                request_id,
-                -32020,
-                "Mcp-Method header must match the JSON-RPC method",
-                400,
-            )
-        if method == "tools/call":
-            tool_name = str((body.get("params") or {}).get("name", ""))
-            if request.headers.get("Mcp-Name") != tool_name:
-                return _json_rpc_error(
-                    request_id,
-                    -32020,
-                    "Mcp-Name header must match params.name",
-                    400,
-                )
+        error_response = _validate_modern_request(request, body, method)
+        if error_response:
+            return error_response
 
     if method == "server/discover":
         return _json_rpc_result(
@@ -350,11 +402,16 @@ def authoring_mcp(request: HttpRequest) -> HttpResponse:
             {"tools": TOOLS, "ttlMs": 300_000, "cacheScope": "private"},
         )
     if method == "tools/call":
-        params = body.get("params") or {}
+        params = body.get("params")
+        if not isinstance(params, dict):
+            return _json_rpc_error(request_id, -32602, "Invalid tool parameters")
         name = params.get("name")
         args = params.get("arguments") or {}
         if not isinstance(name, str) or not isinstance(args, dict):
             return _json_rpc_error(request_id, -32602, "Invalid tool arguments")
+        required_scope = TOOL_SCOPES.get(name)
+        if required_scope and required_scope not in credential.scopes:
+            return _insufficient_scope(request, required_scope)
         try:
             return _json_rpc_result(request_id, _tool_result(_call_tool(request, name, args)))
         except (HttpError, ValueError, TypeError) as exc:
