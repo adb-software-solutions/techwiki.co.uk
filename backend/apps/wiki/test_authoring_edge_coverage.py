@@ -80,7 +80,7 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
     def bearer(self) -> dict[str, Any]:
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_token}"}
 
-    def _json_request(
+    def _json(
         self,
         method: str,
         path: str,
@@ -105,14 +105,11 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             scopes=scopes or [ARTICLE_READ],
         )
         verifier = "v" * 64
-        challenge = (
-            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
-            .rstrip(b"=")
-            .decode("ascii")
-        )
+        digest = hashlib.sha256(verifier.encode("ascii")).digest()
+        challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
         return client, secret, verifier, challenge
 
-    def _authorization_query(
+    def _authorize_query(
         self,
         client: AuthoringOAuthClient,
         challenge: str,
@@ -132,61 +129,73 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
         return urlencode(values)
 
     def _basic(self, client: AuthoringOAuthClient, secret: str) -> str:
-        return base64.b64encode(f"{client.client_id}:{secret}".encode()).decode()
+        value = f"{client.client_id}:{secret}".encode()
+        return base64.b64encode(value).decode()
 
-    def test_api_rejects_empty_duplicate_and_invalid_relationship_payloads(self) -> None:
-        empty_category = self._json_request(
-            "post", "/api/authoring/v1/categories", {"name": "   "}, **self.bearer
-        )
-        self.assertEqual(empty_category.status_code, 422)
-        bad_parent = self._json_request(
-            "post",
-            "/api/authoring/v1/categories",
-            {"name": "Nested", "parent_id": "00000000-0000-0000-0000-000000000001"},
-            **self.bearer,
-        )
-        self.assertEqual(bad_parent.status_code, 404)
-        empty_tag = self._json_request(
-            "post", "/api/authoring/v1/tags", {"name": "   "}, **self.bearer
-        )
-        self.assertEqual(empty_tag.status_code, 422)
-        empty_article = self._json_request(
-            "post",
-            "/api/authoring/v1/articles",
-            {"title": " ", "content": " "},
-            **self.bearer,
-        )
-        self.assertEqual(empty_article.status_code, 422)
-        invalid_categories = self._json_request(
-            "post",
-            "/api/authoring/v1/articles",
-            {
-                "title": "Invalid categories",
-                "content": "body",
-                "category_ids": ["00000000-0000-0000-0000-000000000001"],
-            },
-            **self.bearer,
-        )
-        self.assertEqual(invalid_categories.status_code, 422)
-        invalid_tags = self._json_request(
-            "post",
-            "/api/authoring/v1/articles",
-            {
-                "title": "Invalid tags",
-                "content": "body",
-                "tag_ids": ["00000000-0000-0000-0000-000000000001"],
-            },
-            **self.bearer,
-        )
-        self.assertEqual(invalid_tags.status_code, 422)
+    def test_api_rejects_invalid_relationships_and_empty_values(self) -> None:
+        cases = [
+            (
+                "/api/authoring/v1/categories",
+                {"name": "   "},
+                422,
+            ),
+            (
+                "/api/authoring/v1/categories",
+                {
+                    "name": "Nested",
+                    "parent_id": "00000000-0000-0000-0000-000000000001",
+                },
+                404,
+            ),
+            (
+                "/api/authoring/v1/tags",
+                {"name": "   "},
+                422,
+            ),
+            (
+                "/api/authoring/v1/articles",
+                {"title": " ", "content": " "},
+                422,
+            ),
+            (
+                "/api/authoring/v1/articles",
+                {
+                    "title": "Bad categories",
+                    "content": "body",
+                    "category_ids": [
+                        "00000000-0000-0000-0000-000000000001"
+                    ],
+                },
+                422,
+            ),
+            (
+                "/api/authoring/v1/articles",
+                {
+                    "title": "Bad tags",
+                    "content": "body",
+                    "tag_ids": ["00000000-0000-0000-0000-000000000001"],
+                },
+                422,
+            ),
+        ]
+        for path, payload, expected in cases:
+            with self.subTest(path=path, payload=payload):
+                response = self._json(
+                    "post",
+                    path,
+                    payload,
+                    **self.bearer,
+                )
+                self.assertEqual(response.status_code, expected)
 
-    def test_api_missing_duplicate_and_update_validation_paths(self) -> None:
+    def test_api_duplicate_missing_and_update_guards(self) -> None:
         missing = self.client.get(
             "/api/authoring/v1/articles/00000000-0000-0000-0000-000000000001",
             **self.bearer,
         )
         self.assertEqual(missing.status_code, 404)
-        first = self._json_request(
+
+        created = self._json(
             "post",
             "/api/authoring/v1/articles",
             {
@@ -197,8 +206,10 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             },
             **self.bearer,
         )
-        self.assertEqual(first.status_code, 200)
-        duplicate = self._json_request(
+        self.assertEqual(created.status_code, 200)
+        article_id = created.json()["article"]["id"]
+
+        duplicate = self._json(
             "post",
             "/api/authoring/v1/articles",
             {
@@ -210,37 +221,45 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             **self.bearer,
         )
         self.assertEqual(duplicate.status_code, 409)
-        article_id = first.json()["article"]["id"]
-        bad_type = self._json_request(
-            "patch",
-            f"/api/authoring/v1/articles/{article_id}",
-            {"article_type": "not-a-type"},
-            **self.bearer,
-        )
-        self.assertEqual(bad_type.status_code, 422)
-        bad_category = self._json_request(
-            "patch",
-            f"/api/authoring/v1/articles/{article_id}",
-            {"category_id": "00000000-0000-0000-0000-000000000001"},
-            **self.bearer,
-        )
-        self.assertEqual(bad_category.status_code, 404)
-        bad_categories = self._json_request(
-            "patch",
-            f"/api/authoring/v1/articles/{article_id}",
-            {"category_ids": ["00000000-0000-0000-0000-000000000001"]},
-            **self.bearer,
-        )
-        self.assertEqual(bad_categories.status_code, 422)
-        bad_tags = self._json_request(
-            "patch",
-            f"/api/authoring/v1/articles/{article_id}",
-            {"tag_ids": ["00000000-0000-0000-0000-000000000001"]},
-            **self.bearer,
-        )
-        self.assertEqual(bad_tags.status_code, 422)
 
-    def test_validation_reports_missing_publication_readiness_metadata(self) -> None:
+        updates = [
+            ({"article_type": "not-a-type"}, 422),
+            (
+                {
+                    "category_id": (
+                        "00000000-0000-0000-0000-000000000001"
+                    )
+                },
+                404,
+            ),
+            (
+                {
+                    "category_ids": [
+                        "00000000-0000-0000-0000-000000000001"
+                    ]
+                },
+                422,
+            ),
+            (
+                {
+                    "tag_ids": [
+                        "00000000-0000-0000-0000-000000000001"
+                    ]
+                },
+                422,
+            ),
+        ]
+        for payload, expected in updates:
+            with self.subTest(payload=payload):
+                response = self._json(
+                    "patch",
+                    f"/api/authoring/v1/articles/{article_id}",
+                    payload,
+                    **self.bearer,
+                )
+                self.assertEqual(response.status_code, expected)
+
+    def test_validation_reports_reachable_readiness_warnings(self) -> None:
         article = Article.objects.create(
             title="Tiny draft",
             slug="tiny-draft",
@@ -250,51 +269,66 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             status=ArticleStatus.DRAFT,
         )
         response = self.client.get(
-            f"/api/authoring/v1/articles/{article.id}/validate", **self.bearer
+            f"/api/authoring/v1/articles/{article.id}/validate",
+            **self.bearer,
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertFalse(payload["valid"])
-        self.assertIn("A primary category is required before publication.", payload["errors"])
-        self.assertIn("Add an excerpt for search and article previews.", payload["warnings"])
+        self.assertIn(
+            "A primary category is required before publication.",
+            payload["errors"],
+        )
+        self.assertIn(
+            "Add an excerpt for search and article previews.",
+            payload["warnings"],
+        )
         self.assertIn("Add a meta description.", payload["warnings"])
         self.assertIn(
-            "Article is very short; verify that it fully solves the problem.", payload["warnings"]
+            "Article is very short; verify that it fully solves the problem.",
+            payload["warnings"],
         )
         self.assertIn("Article has no tags.", payload["warnings"])
 
-    def test_oauth_authorization_validation_and_consent_paths(self) -> None:
+    def test_oauth_authorization_validation_and_consent(self) -> None:
         client, _secret, _verifier, challenge = self._oauth_client()
-        cases = [
+        invalid = [
             {"redirect_uri": "https://evil.example/callback"},
             {"response_type": "token"},
             {"code_challenge_method": "plain"},
             {"resource": "http://testserver/not-admin-mcp"},
             {"scope": "unsupported:scope"},
         ]
-        for override in cases:
+        for override in invalid:
             with self.subTest(override=override):
-                response = self.client.get(
-                    f"/oauth/authorize?{self._authorization_query(client, challenge, **override)}"
+                query = self._authorize_query(
+                    client,
+                    challenge,
+                    **override,
                 )
+                response = self.client.get(f"/oauth/authorize?{query}")
                 self.assertEqual(response.status_code, 400)
-        _restricted, _restricted_secret, _restricted_verifier, restricted_challenge = (
-            self._oauth_client([ARTICLE_READ])
+
+        restricted, _secret, _verifier, challenge = self._oauth_client(
+            [ARTICLE_READ]
         )
-        restricted = AuthoringOAuthClient.objects.order_by("-created_at").first()
-        self.assertIsNotNone(restricted)
-        assert restricted is not None
-        forbidden_scope = self.client.get(
-            f"/oauth/authorize?{self._authorization_query(restricted, restricted_challenge, scope=CATEGORY_READ)}"
+        query = self._authorize_query(
+            restricted,
+            challenge,
+            scope=CATEGORY_READ,
         )
-        self.assertEqual(forbidden_scope.status_code, 400)
+        self.assertEqual(
+            self.client.get(f"/oauth/authorize?{query}").status_code,
+            400,
+        )
+
         self.client.force_login(self.user)
-        consent = self.client.get(
-            f"/oauth/authorize?{self._authorization_query(client, challenge)}"
-        )
+        query = self._authorize_query(client, challenge)
+        consent = self.client.get(f"/oauth/authorize?{query}")
         self.assertEqual(consent.status_code, 200)
         self.assertContains(consent, "Authorize TechWiki Authoring")
         self.assertContains(consent, "Publishing is not included")
+
         other = User.objects.create_user(
             email="not-owner@example.com",
             password="strong-test-password",
@@ -303,18 +337,23 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             email_verified=True,
         )
         self.client.force_login(other)
-        forbidden = self.client.get(
-            f"/oauth/authorize?{self._authorization_query(client, challenge)}"
+        self.assertEqual(
+            self.client.get(f"/oauth/authorize?{query}").status_code,
+            403,
         )
-        self.assertEqual(forbidden.status_code, 403)
 
     def test_oauth_token_exchange_rejects_invalid_grants(self) -> None:
         client, secret, verifier, challenge = self._oauth_client()
         self.client.force_login(self.user)
-        query = self._authorization_query(client, challenge)
-        authorization = self.client.post(f"/oauth/authorize?{query}", {"decision": "allow"})
-        code = parse_qs(urlparse(authorization.headers["Location"]).query)["code"][0]
+        query = self._authorize_query(client, challenge)
+        authorization = self.client.post(
+            f"/oauth/authorize?{query}",
+            {"decision": "allow"},
+        )
+        location = authorization.headers["Location"]
+        code = parse_qs(urlparse(location).query)["code"][0]
         basic = self._basic(client, secret)
+
         wrong_redirect = self.client.post(
             "/oauth/token",
             {
@@ -327,6 +366,7 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             HTTP_AUTHORIZATION=f"Basic {basic}",
         )
         self.assertEqual(wrong_redirect.status_code, 400)
+
         valid = self.client.post(
             "/oauth/token",
             {
@@ -339,6 +379,7 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             HTTP_AUTHORIZATION=f"Basic {basic}",
         )
         self.assertEqual(valid.status_code, 200)
+
         reused = self.client.post(
             "/oauth/token",
             {
@@ -350,21 +391,28 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             },
             HTTP_AUTHORIZATION=f"Basic {basic}",
         )
-        self.assertEqual(reused.status_code, 400)
         self.assertEqual(reused.json()["error"], "invalid_grant")
+
         unsupported = self.client.post(
             "/oauth/token",
-            {"grant_type": "client_credentials", "client_id": client.client_id, "client_secret": secret},
+            {
+                "grant_type": "client_credentials",
+                "client_id": client.client_id,
+                "client_secret": secret,
+            },
         )
-        self.assertEqual(unsupported.status_code, 400)
-        self.assertEqual(unsupported.json()["error"], "unsupported_grant_type")
+        self.assertEqual(
+            unsupported.json()["error"],
+            "unsupported_grant_type",
+        )
+
         no_colon = base64.b64encode(client.client_id.encode()).decode()
-        malformed_basic = self.client.post(
+        malformed = self.client.post(
             "/oauth/token",
             {"grant_type": "authorization_code"},
             HTTP_AUTHORIZATION=f"Basic {no_colon}",
         )
-        self.assertEqual(malformed_basic.status_code, 401)
+        self.assertEqual(malformed.status_code, 401)
 
     def test_oauth_refresh_rejects_invalid_resource_and_owner(self) -> None:
         client, secret, _verifier, _challenge = self._oauth_client()
@@ -376,38 +424,59 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             expires_at=timezone.now() + timedelta(days=1),
         )
         basic = self._basic(client, secret)
+
         wrong_resource = self.client.post(
             "/oauth/token",
-            {"grant_type": "refresh_token", "refresh_token": raw, "resource": "http://testserver/wrong"},
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": raw,
+                "resource": "http://testserver/wrong",
+            },
             HTTP_AUTHORIZATION=f"Basic {basic}",
         )
-        self.assertEqual(wrong_resource.status_code, 400)
         self.assertEqual(wrong_resource.json()["error"], "invalid_target")
-        with patch.dict(os.environ, {"TECHWIKI_AUTHORING_USER_ID": "someone-else"}):
+
+        with patch.dict(
+            os.environ,
+            {"TECHWIKI_AUTHORING_USER_ID": "someone-else"},
+        ):
             wrong_owner = self.client.post(
                 "/oauth/token",
-                {"grant_type": "refresh_token", "refresh_token": raw, "resource": "http://testserver/admin-mcp"},
+                {
+                    "grant_type": "refresh_token",
+                    "refresh_token": raw,
+                    "resource": "http://testserver/admin-mcp",
+                },
                 HTTP_AUTHORIZATION=f"Basic {basic}",
             )
-        self.assertEqual(wrong_owner.status_code, 403)
         self.assertEqual(wrong_owner.json()["error"], "access_denied")
+
         refresh.revoked_at = timezone.now()
         refresh.save(update_fields=["revoked_at"])
         revoked = self.client.post(
             "/oauth/token",
-            {"grant_type": "refresh_token", "refresh_token": raw, "resource": "http://testserver/admin-mcp"},
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": raw,
+                "resource": "http://testserver/admin-mcp",
+            },
             HTTP_AUTHORIZATION=f"Basic {basic}",
         )
-        self.assertEqual(revoked.status_code, 400)
         self.assertEqual(revoked.json()["error"], "invalid_grant")
 
-    def test_mcp_legacy_initialize_and_modern_validation_errors(self) -> None:
-        initialize = self._json_request(
-            "post", "/admin-mcp", {"jsonrpc": "2.0", "id": 1, "method": "initialize"}, **self.bearer
+    def test_mcp_protocol_validation_and_legacy_initialize(self) -> None:
+        initialize = self._json(
+            "post",
+            "/admin-mcp",
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+            **self.bearer,
         )
-        self.assertEqual(initialize.status_code, 200)
-        self.assertEqual(initialize.json()["result"]["protocolVersion"], "2025-11-25")
-        missing_meta = self._json_request(
+        self.assertEqual(
+            initialize.json()["result"]["protocolVersion"],
+            "2025-11-25",
+        )
+
+        missing_meta = self._json(
             "post",
             "/admin-mcp",
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
@@ -416,21 +485,25 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             **self.bearer,
         )
         self.assertEqual(missing_meta.status_code, 400)
-        missing_capabilities = self._json_request(
+
+        missing_capabilities = self._json(
             "post",
             "/admin-mcp",
             {
                 "jsonrpc": "2.0",
                 "id": 3,
                 "method": "tools/list",
-                "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"},
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+                },
             },
             HTTP_MCP_PROTOCOL_VERSION="2026-07-28",
             HTTP_MCP_METHOD="tools/list",
             **self.bearer,
         )
         self.assertEqual(missing_capabilities.status_code, 400)
-        invalid_call = self._json_request(
+
+        invalid_call = self._json(
             "post",
             "/admin-mcp",
             {
@@ -448,7 +521,8 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             **self.bearer,
         )
         self.assertEqual(invalid_call.status_code, 400)
-        wrong_name = self._json_request(
+
+        wrong_name = self._json(
             "post",
             "/admin-mcp",
             {
@@ -459,7 +533,10 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
                     "io.modelcontextprotocol/protocolVersion": "2026-07-28",
                     "io.modelcontextprotocol/clientCapabilities": {},
                 },
-                "params": {"name": "list_categories", "arguments": {}},
+                "params": {
+                    "name": "list_categories",
+                    "arguments": {},
+                },
             },
             HTTP_MCP_PROTOCOL_VERSION="2026-07-28",
             HTTP_MCP_METHOD="tools/call",
@@ -467,72 +544,102 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             **self.bearer,
         )
         self.assertEqual(wrong_name.status_code, 400)
-        missing_method = self._json_request(
-            "post", "/admin-mcp", {"jsonrpc": "2.0", "id": 6, "method": "not/a/method"}, **self.bearer
+
+        unknown = self._json(
+            "post",
+            "/admin-mcp",
+            {"jsonrpc": "2.0", "id": 6, "method": "not/a/method"},
+            **self.bearer,
         )
-        self.assertEqual(missing_method.status_code, 200)
-        self.assertEqual(missing_method.json()["error"]["code"], -32601)
+        self.assertEqual(unknown.json()["error"]["code"], -32601)
 
     def test_mcp_exercises_authoring_tool_wrappers(self) -> None:
-        create_category = self._json_request(
-            "post",
-            "/admin-mcp",
-            {"jsonrpc": "2.0", "id": 10, "method": "tools/call", "params": {"name": "create_category", "arguments": {"name": "Containers"}}},
-            **self.bearer,
+        create_category = self._mcp_call(
+            10,
+            "create_category",
+            {"name": "Containers"},
         )
-        self.assertEqual(create_category.status_code, 200)
-        create_tag = self._json_request(
-            "post",
-            "/admin-mcp",
-            {"jsonrpc": "2.0", "id": 11, "method": "tools/call", "params": {"name": "create_tag", "arguments": {"name": "Compose"}}},
-            **self.bearer,
+        self.assertFalse(create_category.json()["result"]["isError"])
+
+        create_tag = self._mcp_call(
+            11,
+            "create_tag",
+            {"name": "Compose"},
         )
-        self.assertEqual(create_tag.status_code, 200)
-        create_article = self._json_request(
+        self.assertFalse(create_tag.json()["result"]["isError"])
+
+        create_article = self._mcp_call(
+            12,
+            "create_article_draft",
+            {
+                "title": "MCP wrapper coverage",
+                "content": "# Diagnose\n\nUse the MCP tools safely.",
+                "category_id": str(self.category.id),
+                "tag_ids": [str(self.tag.id)],
+            },
+        )
+        result = create_article.json()["result"]["structuredContent"]
+        article_id = result["article"]["id"]
+
+        calls = [
+            (13, "search_articles", {"query": "MCP wrapper"}),
+            (14, "get_article", {"article_id": article_id}),
+            (15, "validate_article", {"article_id": article_id}),
+            (
+                16,
+                "set_article_compatibility",
+                {
+                    "article_id": article_id,
+                    "technology": "Django",
+                    "version": "6.0",
+                },
+            ),
+            (
+                17,
+                "update_article_draft",
+                {
+                    "article_id": article_id,
+                    "title": "Updated through MCP",
+                },
+            ),
+            (18, "list_tags", {}),
+        ]
+        for request_id, name, arguments in calls:
+            with self.subTest(tool=name):
+                response = self._mcp_call(
+                    request_id,
+                    name,
+                    arguments,
+                )
+                self.assertFalse(response.json()["result"]["isError"])
+
+        invalid_uuid = self._mcp_call(
+            19,
+            "get_article",
+            {"article_id": "not-a-uuid"},
+        )
+        self.assertTrue(invalid_uuid.json()["result"]["isError"])
+
+    def _mcp_call(
+        self,
+        request_id: int,
+        name: str,
+        arguments: dict[str, object],
+    ) -> Any:
+        return self._json(
             "post",
             "/admin-mcp",
             {
                 "jsonrpc": "2.0",
-                "id": 12,
+                "id": request_id,
                 "method": "tools/call",
                 "params": {
-                    "name": "create_article_draft",
-                    "arguments": {
-                        "title": "MCP wrapper coverage",
-                        "content": "# Diagnose\n\nUse the MCP tools safely.",
-                        "category_id": str(self.category.id),
-                        "tag_ids": [str(self.tag.id)],
-                    },
+                    "name": name,
+                    "arguments": arguments,
                 },
             },
             **self.bearer,
         )
-        self.assertEqual(create_article.status_code, 200)
-        article_id = create_article.json()["result"]["structuredContent"]["article"]["id"]
-        for request_id, name, arguments in [
-            (13, "search_articles", {"query": "MCP wrapper"}),
-            (14, "get_article", {"article_id": article_id}),
-            (15, "validate_article", {"article_id": article_id}),
-            (16, "set_article_compatibility", {"article_id": article_id, "technology": "Django", "version": "6.0"}),
-            (17, "update_article_draft", {"article_id": article_id, "title": "Updated through MCP"}),
-            (18, "list_tags", {}),
-        ]:
-            with self.subTest(tool=name):
-                response = self._json_request(
-                    "post",
-                    "/admin-mcp",
-                    {"jsonrpc": "2.0", "id": request_id, "method": "tools/call", "params": {"name": name, "arguments": arguments}},
-                    **self.bearer,
-                )
-                self.assertEqual(response.status_code, 200)
-                self.assertFalse(response.json()["result"]["isError"])
-        invalid_uuid = self._json_request(
-            "post",
-            "/admin-mcp",
-            {"jsonrpc": "2.0", "id": 19, "method": "tools/call", "params": {"name": "get_article", "arguments": {"article_id": "not-a-uuid"}}},
-            **self.bearer,
-        )
-        self.assertTrue(invalid_uuid.json()["result"]["isError"])
 
     def test_authoring_model_lifecycle_helpers(self) -> None:
         self.assertIn("Edge coverage", str(self.token))
@@ -541,10 +648,12 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
         self.token.save(update_fields=["revoked_at"])
         self.assertFalse(self.token.is_active)
         self.assertIsNone(AuthoringApiToken.authenticate(self.raw_token))
+
         client, secret, verifier, challenge = self._oauth_client()
         self.assertEqual(str(client), "Edge OAuth")
         self.assertTrue(client.check_secret(secret))
         self.assertFalse(client.check_secret("wrong-secret"))
+
         code, raw_code = AuthoringOAuthCode.issue(
             client=client,
             user=self.user,
@@ -556,6 +665,7 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
         )
         self.assertEqual(AuthoringOAuthCode.find(raw_code), code)
         self.assertNotEqual(verifier, raw_code)
+
         refresh, raw_refresh = AuthoringOAuthRefreshToken.issue(
             client=client,
             user=self.user,
@@ -564,20 +674,38 @@ class PrivateAuthoringEdgeCoverageTests(TestCase):
             expires_at=timezone.now() + timedelta(days=1),
         )
         self.assertTrue(refresh.is_active)
-        self.assertEqual(AuthoringOAuthRefreshToken.find(raw_refresh), refresh)
+        self.assertEqual(
+            AuthoringOAuthRefreshToken.find(raw_refresh),
+            refresh,
+        )
         refresh.revoked_at = timezone.now()
         self.assertFalse(refresh.is_active)
 
     def test_authoring_admin_is_read_only_and_displays_scopes(self) -> None:
         request = RequestFactory().get("/admin/")
         token_admin = AuthoringApiTokenAdmin(AuthoringApiToken, admin.site)
-        client_admin = AuthoringOAuthClientAdmin(AuthoringOAuthClient, admin.site)
-        code_admin = AuthoringOAuthCodeAdmin(AuthoringOAuthCode, admin.site)
-        refresh_admin = AuthoringOAuthRefreshTokenAdmin(AuthoringOAuthRefreshToken, admin.site)
+        client_admin = AuthoringOAuthClientAdmin(
+            AuthoringOAuthClient,
+            admin.site,
+        )
+        code_admin = AuthoringOAuthCodeAdmin(
+            AuthoringOAuthCode,
+            admin.site,
+        )
+        refresh_admin = AuthoringOAuthRefreshTokenAdmin(
+            AuthoringOAuthRefreshToken,
+            admin.site,
+        )
         audit_admin = AuthoringAuditLogAdmin(AuthoringAuditLog, admin.site)
-        self.assertEqual(token_admin.scope_summary(self.token), ", ".join(self.token.scopes))
+
+        self.assertEqual(
+            token_admin.scope_summary(self.token),
+            ", ".join(self.token.scopes),
+        )
         self.assertFalse(token_admin.has_add_permission(request))
-        self.assertFalse(token_admin.has_delete_permission(request, self.token))
+        self.assertFalse(
+            token_admin.has_delete_permission(request, self.token)
+        )
         self.assertFalse(client_admin.has_add_permission(request))
         self.assertFalse(client_admin.has_delete_permission(request))
         self.assertFalse(code_admin.has_add_permission(request))
