@@ -14,7 +14,6 @@ export const metadata: Metadata = {
     description:
         "Practical technical documentation, tutorials, troubleshooting guides, and references for developers and system administrators.",
     alternates: {
-        canonical: SITE_URL,
         types: {
             "application/rss+xml": `${SITE_URL}/feed.xml`,
         },
