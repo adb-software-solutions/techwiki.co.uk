@@ -6,8 +6,8 @@ import base64
 import hashlib
 import json
 import os
-from urllib.parse import parse_qs, urlencode, urlparse
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from django.test import TestCase
 
@@ -35,10 +35,6 @@ class AuthoringAccessTests(TestCase):
             scopes=[ARTICLE_READ, ARTICLE_CREATE, CATEGORY_READ, CATEGORY_CREATE],
         )
 
-    @property
-    def bearer(self) -> dict[str, str]:
-        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_token}"}
-
     def test_rest_api_rejects_missing_bearer(self) -> None:
         response = self.client.get("/api/authoring/v1/")
         self.assertEqual(response.status_code, 401)
@@ -55,7 +51,7 @@ class AuthoringAccessTests(TestCase):
                 }
             ),
             content_type="application/json",
-            **self.bearer,
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_token}",
         )
         self.assertEqual(response.status_code, 200)
         article = Article.objects.get(title="Test troubleshooting article")
@@ -89,7 +85,7 @@ class AuthoringAccessTests(TestCase):
             "/admin-mcp",
             data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
             content_type="application/json",
-            **self.bearer,
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_token}",
         )
         self.assertEqual(response.status_code, 200)
         names = {tool["name"] for tool in response.json()["result"]["tools"]}

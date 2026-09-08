@@ -26,6 +26,7 @@ from apps.wiki.authoring_models import (
     AuthoringOAuthCode,
     AuthoringOAuthRefreshToken,
 )
+from authentication.models import User
 
 OFFLINE_ACCESS = "offline_access"
 OAUTH_SCOPES = SAFE_AUTHORING_SCOPES | {OFFLINE_ACCESS}
@@ -42,7 +43,7 @@ def _mcp_resource(request: HttpRequest) -> str:
     return request.build_absolute_uri("/admin-mcp")
 
 
-def _is_owner_user(user) -> bool:
+def _is_owner_user(user: User) -> bool:
     owner_id = os.environ.get("TECHWIKI_AUTHORING_USER_ID", "").strip()
     return bool(owner_id and user.is_active and str(user.id) == owner_id)
 
@@ -77,7 +78,9 @@ def _validate_resource(request: HttpRequest, value: str) -> str:
     return resource
 
 
-def _validate_authorization_request(request: HttpRequest):
+def _validate_authorization_request(
+    request: HttpRequest,
+) -> tuple[AuthoringOAuthClient, str, str, list[str], str]:
     client_id = request.GET.get("client_id", "").strip()
     redirect_uri = request.GET.get("redirect_uri", "").strip()
     response_type = request.GET.get("response_type", "").strip()
@@ -124,7 +127,9 @@ def oauth_authorization_server_metadata(request: HttpRequest) -> JsonResponse:
 @csrf_protect
 def oauth_authorize(request: HttpRequest) -> HttpResponse:
     try:
-        client, redirect_uri, resource, scopes, code_challenge = _validate_authorization_request(request)
+        client, redirect_uri, resource, scopes, code_challenge = _validate_authorization_request(
+            request
+        )
     except ValueError as exc:
         return HttpResponse(escape(str(exc)), status=400, content_type="text/plain")
 
@@ -132,7 +137,9 @@ def oauth_authorize(request: HttpRequest) -> HttpResponse:
         login_url = f"{settings.AUTH_FRONTEND_URL.rstrip('/')}/login"
         return redirect(f"{login_url}?{urlencode({'next': request.build_absolute_uri()})}")
     if not _owner_matches(request):
-        return HttpResponse("This TechWiki account cannot authorize the authoring service.", status=403)
+        return HttpResponse(
+            "This TechWiki account cannot authorize the authoring service.", status=403
+        )
 
     state = request.GET.get("state", "")
     issuer = _issuer(request)
@@ -214,13 +221,15 @@ def _pkce_matches(verifier: str, challenge: str) -> bool:
 def _issue_token_response(
     *,
     client: AuthoringOAuthClient,
-    user,
+    user: User,
     scopes: list[str],
     resource: str,
     include_refresh: bool,
 ) -> JsonResponse:
     if not _is_owner_user(user):
-        return _oauth_error("access_denied", "The configured authoring owner is no longer available", 403)
+        return _oauth_error(
+            "access_denied", "The configured authoring owner is no longer available", 403
+        )
 
     authoring_scopes = sorted(set(scopes) - {OFFLINE_ACCESS})
     _token, raw_access = AuthoringApiToken.issue(
@@ -267,11 +276,17 @@ def oauth_token(request: HttpRequest) -> JsonResponse:
         if not code or code.client_id != client.id:
             return _oauth_error("invalid_grant", "Authorization code is invalid")
         if code.used_at or code.expires_at <= timezone.now():
-            return _oauth_error("invalid_grant", "Authorization code has expired or was already used")
+            return _oauth_error(
+                "invalid_grant", "Authorization code has expired or was already used"
+            )
         if request.POST.get("redirect_uri", "") != code.redirect_uri:
-            return _oauth_error("invalid_grant", "Redirect URI does not match the authorization request")
+            return _oauth_error(
+                "invalid_grant", "Redirect URI does not match the authorization request"
+            )
         if request.POST.get("resource", "") != code.resource:
-            return _oauth_error("invalid_target", "Resource does not match the authorization request")
+            return _oauth_error(
+                "invalid_target", "Resource does not match the authorization request"
+            )
         verifier = request.POST.get("code_verifier", "")
         if not _pkce_matches(verifier, code.code_challenge):
             return _oauth_error("invalid_grant", "PKCE verification failed")
@@ -294,7 +309,9 @@ def oauth_token(request: HttpRequest) -> JsonResponse:
         if request.POST.get("resource", "") != refresh_token.resource:
             return _oauth_error("invalid_target", "Resource does not match the refresh token")
         if not _is_owner_user(refresh_token.user):
-            return _oauth_error("access_denied", "The configured authoring owner is no longer available", 403)
+            return _oauth_error(
+                "access_denied", "The configured authoring owner is no longer available", 403
+            )
         refresh_token.revoked_at = timezone.now()
         refresh_token.save(update_fields=["revoked_at"])
         return _issue_token_response(

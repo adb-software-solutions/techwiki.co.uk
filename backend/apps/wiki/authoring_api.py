@@ -115,7 +115,7 @@ class CompatibilityPayload(Schema):
 
 
 def _credential(request: HttpRequest) -> AuthoringApiToken:
-    credential = request.auth
+    credential = getattr(request, "auth", None)
     if not isinstance(credential, AuthoringApiToken):
         raise HttpError(401, "Authoring authentication required")
     return credential
@@ -212,7 +212,7 @@ def authoring_root(request: HttpRequest) -> dict[str, Any]:
         "scopes": credential.scopes,
         "safe_scopes": sorted(SAFE_AUTHORING_SCOPES),
         "publishing_enabled": False,
-        "mcp": "/api/authoring/v1/mcp",
+        "mcp": "/admin-mcp",
     }
 
 
@@ -299,7 +299,9 @@ def authoring_list_articles(
 ) -> dict[str, Any]:
     _require_scope(request, ARTICLE_READ)
     limit = min(max(limit, 1), 100)
-    articles = Article.objects.select_related("category", "author", "featured_image").prefetch_related("tags")
+    articles = Article.objects.select_related(
+        "category", "author", "featured_image"
+    ).prefetch_related("tags")
     if status:
         articles = articles.filter(status=status)
     if q.strip():
@@ -331,7 +333,9 @@ def authoring_get_article(request: HttpRequest, article_id: uuid.UUID) -> dict[s
 
 
 @authoring_router.post("/articles", response=dict)
-def authoring_create_article(request: HttpRequest, data: ArticleDraftCreatePayload) -> dict[str, Any]:
+def authoring_create_article(
+    request: HttpRequest, data: ArticleDraftCreatePayload
+) -> dict[str, Any]:
     credential = _require_scope(request, ARTICLE_CREATE)
     cached = _existing_idempotent_result(request, "article.draft.create")
     if cached:
@@ -445,7 +449,11 @@ def authoring_update_article(
             except Category.DoesNotExist as exc:
                 raise HttpError(404, "Primary category not found") from exc
 
-        if Article.objects.exclude(id=article.id).filter(category=article.category, slug=article.slug).exists():
+        if (
+            Article.objects.exclude(id=article.id)
+            .filter(category=article.category, slug=article.slug)
+            .exists()
+        ):
             raise HttpError(409, "An article with this slug already exists in the category")
 
         article.version += 1

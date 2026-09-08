@@ -309,7 +309,9 @@ def _call_tool(request: HttpRequest, name: str, args: dict[str, Any]) -> Any:
     raise HttpError(404, f"Unknown tool: {name}")
 
 
-def _validate_modern_request(request: HttpRequest, body: dict[str, Any], method: str) -> HttpResponse | None:
+def _validate_modern_request(
+    request: HttpRequest, body: dict[str, Any], method: str
+) -> HttpResponse | None:
     request_id = body.get("id")
     if request.headers.get("Mcp-Method") != method:
         return _json_rpc_error(
@@ -320,10 +322,17 @@ def _validate_modern_request(request: HttpRequest, body: dict[str, Any], method:
         )
 
     meta = body.get("_meta")
-    if not isinstance(meta, dict) or meta.get("io.modelcontextprotocol/protocolVersion") != PROTOCOL_VERSION:
-        return _json_rpc_error(request_id, -32600, "Modern MCP requests must include protocolVersion metadata", 400)
+    if (
+        not isinstance(meta, dict)
+        or meta.get("io.modelcontextprotocol/protocolVersion") != PROTOCOL_VERSION
+    ):
+        return _json_rpc_error(
+            request_id, -32600, "Modern MCP requests must include protocolVersion metadata", 400
+        )
     if "io.modelcontextprotocol/clientCapabilities" not in meta:
-        return _json_rpc_error(request_id, -32600, "Modern MCP requests must include clientCapabilities metadata", 400)
+        return _json_rpc_error(
+            request_id, -32600, "Modern MCP requests must include clientCapabilities metadata", 400
+        )
 
     if method == "tools/call":
         params = body.get("params")
