@@ -1,6 +1,7 @@
 """Django admin registration for private TechWiki authoring access."""
 
 from django.contrib import admin
+from django.http import HttpRequest
 
 from apps.wiki.authoring_models import (
     AuthoringApiToken,
@@ -45,11 +46,15 @@ class AuthoringApiTokenAdmin(admin.ModelAdmin[AuthoringApiToken]):
     def scope_summary(self, obj: AuthoringApiToken) -> str:
         return ", ".join(obj.scopes)
 
-    def has_add_permission(self, request) -> bool:
+    def has_add_permission(self, request: HttpRequest) -> bool:
         """Tokens must be issued by a command or OAuth exchange."""
         return False
 
-    def has_delete_permission(self, request, obj=None) -> bool:
+    def has_delete_permission(
+        self,
+        request: HttpRequest,
+        obj: AuthoringApiToken | None = None,
+    ) -> bool:
         """Keep revoked credentials for the audit trail."""
         return False
 
@@ -72,10 +77,14 @@ class AuthoringOAuthClientAdmin(admin.ModelAdmin[AuthoringOAuthClient]):
     )
     fields = readonly_fields + ("is_active",)
 
-    def has_add_permission(self, request) -> bool:
+    def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def has_delete_permission(self, request, obj=None) -> bool:
+    def has_delete_permission(
+        self,
+        request: HttpRequest,
+        obj: AuthoringOAuthClient | None = None,
+    ) -> bool:
         return False
 
 
@@ -97,13 +106,21 @@ class AuthoringOAuthCodeAdmin(admin.ModelAdmin[AuthoringOAuthCode]):
         "created_at",
     )
 
-    def has_add_permission(self, request) -> bool:
+    def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def has_change_permission(self, request, obj=None) -> bool:
+    def has_change_permission(
+        self,
+        request: HttpRequest,
+        obj: AuthoringOAuthCode | None = None,
+    ) -> bool:
         return False
 
-    def has_delete_permission(self, request, obj=None) -> bool:
+    def has_delete_permission(
+        self,
+        request: HttpRequest,
+        obj: AuthoringOAuthCode | None = None,
+    ) -> bool:
         return False
 
 
@@ -126,10 +143,14 @@ class AuthoringOAuthRefreshTokenAdmin(admin.ModelAdmin[AuthoringOAuthRefreshToke
     )
     fields = readonly_fields + ("revoked_at",)
 
-    def has_add_permission(self, request) -> bool:
+    def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def has_delete_permission(self, request, obj=None) -> bool:
+    def has_delete_permission(
+        self,
+        request: HttpRequest,
+        obj: AuthoringOAuthRefreshToken | None = None,
+    ) -> bool:
         return False
 
 
@@ -162,11 +183,19 @@ class AuthoringAuditLogAdmin(admin.ModelAdmin[AuthoringAuditLog]):
     )
     ordering = ("-created_at",)
 
-    def has_add_permission(self, request) -> bool:
+    def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def has_change_permission(self, request, obj=None) -> bool:
+    def has_change_permission(
+        self,
+        request: HttpRequest,
+        obj: AuthoringAuditLog | None = None,
+    ) -> bool:
         return False
 
-    def has_delete_permission(self, request, obj=None) -> bool:
+    def has_delete_permission(
+        self,
+        request: HttpRequest,
+        obj: AuthoringAuditLog | None = None,
+    ) -> bool:
         return False

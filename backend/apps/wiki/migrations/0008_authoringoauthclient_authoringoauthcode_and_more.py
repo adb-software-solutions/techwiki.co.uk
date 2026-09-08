@@ -1,7 +1,8 @@
 # Generated for TechWiki private authoring OAuth support.
 
-import django.db.models.deletion
 import uuid
+
+import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
@@ -16,7 +17,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="AuthoringOAuthClient",
             fields=[
-                ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
+                    ),
+                ),
                 ("name", models.CharField(max_length=100)),
                 ("client_id", models.CharField(db_index=True, max_length=100, unique=True)),
                 ("client_secret_hash", models.CharField(blank=True, default="", max_length=64)),
@@ -30,7 +36,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="AuthoringOAuthCode",
             fields=[
-                ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
+                    ),
+                ),
                 ("code_hash", models.CharField(max_length=64, unique=True)),
                 ("redirect_uri", models.URLField(max_length=500)),
                 ("scopes", models.JSONField(default=list)),
@@ -59,7 +70,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="AuthoringOAuthRefreshToken",
             fields=[
-                ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
+                    ),
+                ),
                 ("token_prefix", models.CharField(db_index=True, max_length=16)),
                 ("token_hash", models.CharField(max_length=64, unique=True)),
                 ("scopes", models.JSONField(default=list)),

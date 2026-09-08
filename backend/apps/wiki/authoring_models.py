@@ -5,11 +5,14 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
+from datetime import datetime
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.utils import timezone
+
+from authentication.models import User
 
 
 def _token_digest(raw: str) -> str:
@@ -56,12 +59,12 @@ class AuthoringApiToken(models.Model):
     def issue(
         cls,
         *,
-        user,
+        user: User,
         name: str,
         scopes: list[str],
         resource: str = "",
-        expires_at=None,
-    ) -> tuple["AuthoringApiToken", str]:
+        expires_at: datetime | None = None,
+    ) -> tuple[AuthoringApiToken, str]:
         raw = f"tw_auth_{secrets.token_urlsafe(40)}"
         token = cls.objects.create(
             user=user,
@@ -80,7 +83,7 @@ class AuthoringApiToken(models.Model):
         raw: str,
         *,
         resource: str | None = "",
-    ) -> "AuthoringApiToken | None":
+    ) -> AuthoringApiToken | None:
         if not raw.startswith("tw_auth_"):
             return None
         token = cls.objects.select_related("user").filter(token_hash=_token_digest(raw)).first()
@@ -118,7 +121,7 @@ class AuthoringOAuthClient(models.Model):
         name: str,
         redirect_uris: list[str],
         scopes: list[str],
-    ) -> tuple["AuthoringOAuthClient", str]:
+    ) -> tuple[AuthoringOAuthClient, str]:
         client_id = f"tw_client_{secrets.token_urlsafe(18)}"
         secret = f"tw_secret_{secrets.token_urlsafe(36)}"
         client = cls.objects.create(
@@ -162,13 +165,13 @@ class AuthoringOAuthCode(models.Model):
         cls,
         *,
         client: AuthoringOAuthClient,
-        user,
+        user: User,
         redirect_uri: str,
         resource: str,
         scopes: list[str],
         code_challenge: str,
-        expires_at,
-    ) -> tuple["AuthoringOAuthCode", str]:
+        expires_at: datetime,
+    ) -> tuple[AuthoringOAuthCode, str]:
         raw = f"tw_code_{secrets.token_urlsafe(32)}"
         code = cls.objects.create(
             client=client,
@@ -183,8 +186,12 @@ class AuthoringOAuthCode(models.Model):
         return code, raw
 
     @classmethod
-    def find(cls, raw: str) -> "AuthoringOAuthCode | None":
-        return cls.objects.select_related("client", "user").filter(code_hash=_token_digest(raw)).first()
+    def find(cls, raw: str) -> AuthoringOAuthCode | None:
+        return (
+            cls.objects.select_related("client", "user")
+            .filter(code_hash=_token_digest(raw))
+            .first()
+        )
 
 
 class AuthoringOAuthRefreshToken(models.Model):
@@ -218,11 +225,11 @@ class AuthoringOAuthRefreshToken(models.Model):
         cls,
         *,
         client: AuthoringOAuthClient,
-        user,
+        user: User,
         scopes: list[str],
         resource: str,
-        expires_at,
-    ) -> tuple["AuthoringOAuthRefreshToken", str]:
+        expires_at: datetime,
+    ) -> tuple[AuthoringOAuthRefreshToken, str]:
         raw = f"tw_refresh_{secrets.token_urlsafe(40)}"
         token = cls.objects.create(
             client=client,
@@ -236,8 +243,12 @@ class AuthoringOAuthRefreshToken(models.Model):
         return token, raw
 
     @classmethod
-    def find(cls, raw: str) -> "AuthoringOAuthRefreshToken | None":
-        return cls.objects.select_related("client", "user").filter(token_hash=_token_digest(raw)).first()
+    def find(cls, raw: str) -> AuthoringOAuthRefreshToken | None:
+        return (
+            cls.objects.select_related("client", "user")
+            .filter(token_hash=_token_digest(raw))
+            .first()
+        )
 
 
 class AuthoringAuditLog(models.Model):

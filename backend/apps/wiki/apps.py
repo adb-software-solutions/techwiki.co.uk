@@ -13,10 +13,14 @@ class WikiConfig(AppConfig):
     def import_models(self) -> None:
         """Register models that live outside the legacy models.py module."""
         super().import_models()
-        from apps.wiki import authoring_models  # noqa: F401
-        from apps.wiki import compatibility  # noqa: F401
+        from apps.wiki import (
+            authoring_models,  # noqa: F401
+            compatibility,  # noqa: F401
+        )
 
     def ready(self) -> None:
         """Register auxiliary wiki models with the Django admin."""
-        from apps.wiki import authoring_admin  # noqa: F401
-        from apps.wiki import compatibility_admin  # noqa: F401
+        from apps.wiki import (
+            authoring_admin,  # noqa: F401
+            compatibility_admin,  # noqa: F401
+        )

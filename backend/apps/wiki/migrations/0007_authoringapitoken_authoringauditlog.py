@@ -17,7 +17,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="AuthoringApiToken",
             fields=[
-                ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
+                    ),
+                ),
                 ("name", models.CharField(max_length=100)),
                 ("token_prefix", models.CharField(db_index=True, max_length=16)),
                 ("token_hash", models.CharField(max_length=64, unique=True)),
@@ -40,11 +45,19 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="AuthoringAuditLog",
             fields=[
-                ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
+                    ),
+                ),
                 ("action", models.CharField(db_index=True, max_length=100)),
                 ("object_type", models.CharField(blank=True, default="", max_length=50)),
                 ("object_id", models.CharField(blank=True, default="", max_length=100)),
-                ("request_id", models.CharField(blank=True, db_index=True, default="", max_length=100)),
+                (
+                    "request_id",
+                    models.CharField(blank=True, db_index=True, default="", max_length=100),
+                ),
                 ("before", models.JSONField(blank=True, null=True)),
                 ("after", models.JSONField(blank=True, null=True)),
                 ("metadata", models.JSONField(blank=True, default=dict)),

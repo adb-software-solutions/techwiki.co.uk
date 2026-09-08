@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+from argparse import ArgumentParser
 from datetime import timedelta
+from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
@@ -20,7 +22,7 @@ class Command(BaseCommand):
 
     help = "Create a scoped private authoring API token for the configured owner."
 
-    def add_arguments(self, parser) -> None:
+    def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument("--name", default="ChatGPT authoring")
         parser.add_argument("--days", type=int, default=90)
         parser.add_argument(
@@ -30,15 +32,19 @@ class Command(BaseCommand):
             help="Scope to grant. Repeat for multiple scopes; defaults to safe draft authoring scopes.",
         )
 
-    def handle(self, *args, **options) -> None:
+    def handle(self, *args: Any, **options: Any) -> None:
         owner_id = os.environ.get("TECHWIKI_AUTHORING_USER_ID", "").strip()
         if not owner_id:
-            raise CommandError("TECHWIKI_AUTHORING_USER_ID must be configured before issuing a token.")
+            raise CommandError(
+                "TECHWIKI_AUTHORING_USER_ID must be configured before issuing a token."
+            )
 
         try:
             owner = User.objects.get(id=owner_id)
         except (User.DoesNotExist, ValueError) as exc:
-            raise CommandError("TECHWIKI_AUTHORING_USER_ID does not match a TechWiki user.") from exc
+            raise CommandError(
+                "TECHWIKI_AUTHORING_USER_ID does not match a TechWiki user."
+            ) from exc
 
         days = options["days"]
         if days <= 0:
