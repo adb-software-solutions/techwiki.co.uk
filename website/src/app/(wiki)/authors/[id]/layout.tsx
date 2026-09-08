@@ -9,6 +9,18 @@ interface AuthorLayoutProps {
     params: Promise<{ id: string }>;
 }
 
+interface AuthorMetadataLinks {
+    photo?: string;
+    bluesky?: string;
+    linkedin?: string;
+    instagram?: string;
+    facebook?: string;
+    devto?: string;
+    stackoverflow?: string;
+    youtube?: string;
+    twitch?: string;
+}
+
 function absolutePhotoUrl(photo: string | undefined): string | undefined {
     if (!photo) return undefined;
     if (photo.startsWith("http://") || photo.startsWith("https://")) {
@@ -24,7 +36,7 @@ export async function generateMetadata({
     const response = await getAuthorProfile(id).catch(() => null);
     if (!response?.success || !response.user) return {};
 
-    const author = response.user;
+    const author = response.user as typeof response.user & AuthorMetadataLinks;
     const name = `${author.first_name} ${author.last_name}`.trim();
     const canonical = `${BASE_URL}/authors/${id}`;
 
@@ -56,7 +68,7 @@ export default async function AuthorLayout({
     const response = await getAuthorProfile(id).catch(() => null);
     if (!response?.success || !response.user) return children;
 
-    const author = response.user;
+    const author = response.user as typeof response.user & AuthorMetadataLinks;
     const name = `${author.first_name} ${author.last_name}`.trim();
     const canonical = `${BASE_URL}/authors/${id}`;
     const sameAs = [
