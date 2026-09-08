@@ -98,7 +98,7 @@ async function renderMermaidDiagrams(container: HTMLElement) {
         mermaid.initialize({
             startOnLoad: false,
             theme: "dark",
-            securityLevel: "loose",
+            securityLevel: "strict",
             fontFamily:
                 "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         });
