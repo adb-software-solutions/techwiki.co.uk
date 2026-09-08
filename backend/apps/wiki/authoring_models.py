@@ -7,6 +7,7 @@ import secrets
 import uuid
 
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.utils import timezone
 
@@ -259,9 +260,9 @@ class AuthoringAuditLog(models.Model):
     object_type = models.CharField(max_length=50, blank=True, default="")
     object_id = models.CharField(max_length=100, blank=True, default="")
     request_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    before = models.JSONField(null=True, blank=True)
-    after = models.JSONField(null=True, blank=True)
-    metadata = models.JSONField(default=dict, blank=True)
+    before = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
+    after = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
+    metadata = models.JSONField(default=dict, blank=True, encoder=DjangoJSONEncoder)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
