@@ -38,6 +38,10 @@ def _issuer(request: HttpRequest) -> str:
     return request.build_absolute_uri("/").rstrip("/")
 
 
+def _mcp_resource(request: HttpRequest) -> str:
+    return request.build_absolute_uri("/admin-mcp")
+
+
 def _is_owner_user(user) -> bool:
     owner_id = os.environ.get("TECHWIKI_AUTHORING_USER_ID", "").strip()
     return bool(owner_id and user.is_active and str(user.id) == owner_id)
@@ -65,6 +69,14 @@ def _load_client(client_id: str) -> AuthoringOAuthClient | None:
     return AuthoringOAuthClient.objects.filter(client_id=client_id, is_active=True).first()
 
 
+def _validate_resource(request: HttpRequest, value: str) -> str:
+    resource = value.strip()
+    expected = _mcp_resource(request)
+    if resource != expected:
+        raise ValueError("resource must identify the TechWiki private MCP server")
+    return resource
+
+
 def _validate_authorization_request(request: HttpRequest):
     client_id = request.GET.get("client_id", "").strip()
     redirect_uri = request.GET.get("redirect_uri", "").strip()
@@ -81,13 +93,14 @@ def _validate_authorization_request(request: HttpRequest):
         raise ValueError("Only authorization code responses are supported")
     if not code_challenge or challenge_method != "S256":
         raise ValueError("PKCE with code_challenge_method=S256 is required")
+    resource = _validate_resource(request, request.GET.get("resource", ""))
 
     scope_value = request.GET.get("scope", "").strip()
     scopes = _requested_scopes(scope_value) if scope_value else sorted(set(client.scopes))
     requested_authoring_scopes = set(scopes) - {OFFLINE_ACCESS}
     if requested_authoring_scopes - set(client.scopes):
         raise ValueError("OAuth client is not permitted to request one or more scopes")
-    return client, redirect_uri, scopes, code_challenge
+    return client, redirect_uri, resource, scopes, code_challenge
 
 
 @require_GET
@@ -111,7 +124,7 @@ def oauth_authorization_server_metadata(request: HttpRequest) -> JsonResponse:
 @csrf_protect
 def oauth_authorize(request: HttpRequest) -> HttpResponse:
     try:
-        client, redirect_uri, scopes, code_challenge = _validate_authorization_request(request)
+        client, redirect_uri, resource, scopes, code_challenge = _validate_authorization_request(request)
     except ValueError as exc:
         return HttpResponse(escape(str(exc)), status=400, content_type="text/plain")
 
@@ -122,10 +135,11 @@ def oauth_authorize(request: HttpRequest) -> HttpResponse:
         return HttpResponse("This TechWiki account cannot authorize the authoring service.", status=403)
 
     state = request.GET.get("state", "")
+    issuer = _issuer(request)
     if request.method == "POST":
         decision = request.POST.get("decision", "")
         if decision != "allow":
-            params = {"error": "access_denied"}
+            params = {"error": "access_denied", "iss": issuer}
             if state:
                 params["state"] = state
             return redirect(f"{redirect_uri}?{urlencode(params)}")
@@ -134,11 +148,12 @@ def oauth_authorize(request: HttpRequest) -> HttpResponse:
             client=client,
             user=request.user,
             redirect_uri=redirect_uri,
+            resource=resource,
             scopes=scopes,
             code_challenge=code_challenge,
             expires_at=timezone.now() + AUTHORIZATION_CODE_LIFETIME,
         )
-        params = {"code": raw_code}
+        params = {"code": raw_code, "iss": issuer}
         if state:
             params["state"] = state
         return redirect(f"{redirect_uri}?{urlencode(params)}")
@@ -201,6 +216,7 @@ def _issue_token_response(
     client: AuthoringOAuthClient,
     user,
     scopes: list[str],
+    resource: str,
     include_refresh: bool,
 ) -> JsonResponse:
     if not _is_owner_user(user):
@@ -211,6 +227,7 @@ def _issue_token_response(
         user=user,
         name=f"OAuth: {client.name}",
         scopes=authoring_scopes,
+        resource=resource,
         expires_at=timezone.now() + ACCESS_TOKEN_LIFETIME,
     )
     payload: dict[str, object] = {
@@ -218,12 +235,14 @@ def _issue_token_response(
         "token_type": "Bearer",
         "expires_in": int(ACCESS_TOKEN_LIFETIME.total_seconds()),
         "scope": " ".join(scopes),
+        "resource": resource,
     }
     if include_refresh:
         _refresh, raw_refresh = AuthoringOAuthRefreshToken.issue(
             client=client,
             user=user,
             scopes=scopes,
+            resource=resource,
             expires_at=timezone.now() + REFRESH_TOKEN_LIFETIME,
         )
         payload["refresh_token"] = raw_refresh
@@ -251,6 +270,8 @@ def oauth_token(request: HttpRequest) -> JsonResponse:
             return _oauth_error("invalid_grant", "Authorization code has expired or was already used")
         if request.POST.get("redirect_uri", "") != code.redirect_uri:
             return _oauth_error("invalid_grant", "Redirect URI does not match the authorization request")
+        if request.POST.get("resource", "") != code.resource:
+            return _oauth_error("invalid_target", "Resource does not match the authorization request")
         verifier = request.POST.get("code_verifier", "")
         if not _pkce_matches(verifier, code.code_challenge):
             return _oauth_error("invalid_grant", "PKCE verification failed")
@@ -261,6 +282,7 @@ def oauth_token(request: HttpRequest) -> JsonResponse:
             client=client,
             user=code.user,
             scopes=code.scopes,
+            resource=code.resource,
             include_refresh=OFFLINE_ACCESS in code.scopes,
         )
 
@@ -269,6 +291,8 @@ def oauth_token(request: HttpRequest) -> JsonResponse:
         refresh_token = AuthoringOAuthRefreshToken.find(raw_refresh)
         if not refresh_token or refresh_token.client_id != client.id or not refresh_token.is_active:
             return _oauth_error("invalid_grant", "Refresh token is invalid or expired")
+        if request.POST.get("resource", "") != refresh_token.resource:
+            return _oauth_error("invalid_target", "Resource does not match the refresh token")
         if not _is_owner_user(refresh_token.user):
             return _oauth_error("access_denied", "The configured authoring owner is no longer available", 403)
         refresh_token.revoked_at = timezone.now()
@@ -277,6 +301,7 @@ def oauth_token(request: HttpRequest) -> JsonResponse:
             client=client,
             user=refresh_token.user,
             scopes=refresh_token.scopes,
+            resource=refresh_token.resource,
             include_refresh=True,
         )
 
@@ -291,8 +316,8 @@ def oauth_revoke(request: HttpRequest) -> HttpResponse:
         return _oauth_error("invalid_client", "Client authentication failed", 401)
 
     raw = request.POST.get("token", "")
-    access = AuthoringApiToken.authenticate(raw)
-    if access and _is_owner_user(access.user):
+    access = AuthoringApiToken.authenticate(raw, resource=None)
+    if access and access.resource == _mcp_resource(request) and _is_owner_user(access.user):
         access.revoked_at = timezone.now()
         access.save(update_fields=["revoked_at"])
     refresh = AuthoringOAuthRefreshToken.find(raw) if raw else None
