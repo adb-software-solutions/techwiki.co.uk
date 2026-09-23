@@ -56,6 +56,12 @@ WEBAUTHN_ALLOWED_ORIGINS = [
     for origin in os.environ.get("WEBAUTHN_ALLOWED_ORIGINS", AUTH_FRONTEND_URL).split(",")
     if origin.strip()
 ]
+WEBAUTHN_RP_ID = os.environ.get("WEBAUTHN_RP_ID", SITE_DOMAIN)
+WEBAUTHN_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("WEBAUTHN_ALLOWED_ORIGINS", AUTH_FRONTEND_URL).split(",")
+    if origin.strip()
+]
 
 MICROSOFT_GRAPH_TENANT_ID = os.environ.get("MICROSOFT_GRAPH_TENANT_ID", "")
 MICROSOFT_GRAPH_CLIENT_ID = os.environ.get("MICROSOFT_GRAPH_CLIENT_ID", "")
