@@ -50,6 +50,12 @@ SITE_DOMAIN = os.environ.get("SITE_DOMAIN", "localhost")
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 AUTH_FRONTEND_URL = os.environ.get("AUTH_FRONTEND_URL", "http://localhost:5175")
+WEBAUTHN_RP_ID = os.environ.get("WEBAUTHN_RP_ID", SITE_DOMAIN)
+WEBAUTHN_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("WEBAUTHN_ALLOWED_ORIGINS", AUTH_FRONTEND_URL).split(",")
+    if origin.strip()
+]
 
 MICROSOFT_GRAPH_TENANT_ID = os.environ.get("MICROSOFT_GRAPH_TENANT_ID", "")
 MICROSOFT_GRAPH_CLIENT_ID = os.environ.get("MICROSOFT_GRAPH_CLIENT_ID", "")
