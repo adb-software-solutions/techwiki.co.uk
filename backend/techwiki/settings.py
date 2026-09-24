@@ -34,6 +34,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 RUNNING_MYPY = Path(sys.argv[0]).name == "mypy"
+TESTING = "test" in sys.argv
 if DEBUG or RUNNING_MYPY:
     SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-techwiki-development-only")
 else:
@@ -50,12 +51,6 @@ SITE_DOMAIN = os.environ.get("SITE_DOMAIN", "localhost")
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 AUTH_FRONTEND_URL = os.environ.get("AUTH_FRONTEND_URL", "http://localhost:5175")
-WEBAUTHN_RP_ID = os.environ.get("WEBAUTHN_RP_ID", SITE_DOMAIN)
-WEBAUTHN_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.environ.get("WEBAUTHN_ALLOWED_ORIGINS", AUTH_FRONTEND_URL).split(",")
-    if origin.strip()
-]
 WEBAUTHN_RP_ID = os.environ.get("WEBAUTHN_RP_ID", SITE_DOMAIN)
 WEBAUTHN_ALLOWED_ORIGINS = [
     origin.strip()
