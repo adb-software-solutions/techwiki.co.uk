@@ -133,27 +133,31 @@ Visit [localhost:3000](http://localhost:3000) for the wiki and [localhost:5173](
 
 ### Analytics and advertising
 
-Google Analytics and AdSense are optional. Add these public values to
-`website/.env.local` for local testing and as GitHub Actions repository
-variables for production:
+Google Analytics, AdSense, and Ezoic are optional. Configure public build-time
+values in `website/.env.local` for development and in the website's Infisical
+application environment for production. The website workflow exports them to
+`website/.ci.env` before building the Docker image.
 
 ```dotenv
 NEXT_PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX
 NEXT_PUBLIC_ADSENSE_CLIENT_ID=ca-pub-0000000000000000
-NEXT_PUBLIC_ADSENSE_BANNER_SLOT=0000000000
-NEXT_PUBLIC_ADSENSE_SIDEBAR_SLOT=0000000000
-NEXT_PUBLIC_ADSENSE_IN_ARTICLE_SLOT=0000000000
+NEXT_PUBLIC_EZOIC_ADS_TXT_ENABLED=false
+NEXT_PUBLIC_EZOIC_ENABLED=false
 ```
 
-The client ID enables the global AdSense script, account metadata, and
-`/ads.txt`. Each slot variable independently enables its corresponding ad
-placement.
+Without Ezoic, the AdSense client ID enables its script, account metadata, and
+local `/ads.txt` seller entry. Enabling Ezoic suppresses the direct AdSense
+script. Link AdSense through Ezoic Mediation if you want to keep it as a demand
+source.
 
-These IDs are public and should be GitHub repository **variables**, not
-secrets. The website workflow embeds them in the production Next.js build.
+Ezoic uses the official React SDK (1.1.0), one provider, and two named placements
+above and below the article body on both article routes. The SDK manages consent
+scripts and SPA mode; placements remount on pathname changes to clean up and
+request ads for the new article. Named placements require no dashboard IDs.
 
-Before serving ads in the EEA, UK, or Switzerland, configure a Google-certified
-consent management platform in AdSense under **Privacy & messaging**.
+See [Ezoic setup](docs/ezoic-setup.md) for dashboard prerequisites, ads.txt
+activation, deployment, and verification. Both Ezoic flags default to off and
+require a rebuild when changed.
 
 ## Common commands
 

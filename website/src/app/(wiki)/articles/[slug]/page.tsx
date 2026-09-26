@@ -1,3 +1,4 @@
+import { ArticleAd } from "@/lib/analytics/Ezoic";
 import { FloatingEditButton } from "@/components/wiki/ArticleActions";
 import { ArticleActionsBar } from "@/components/wiki/ArticleActionsBar";
 import { MarkdownRenderer } from "@/components/wiki/MarkdownRenderer";
@@ -192,10 +193,14 @@ export default async function StandaloneArticlePage({
                 </div>
             </header>
 
+            <ArticleAd location="top_of_page" />
+
             {/* Article content */}
             <div className="mb-12">
                 <MarkdownRenderer html={article.rendered_html} />
             </div>
+
+            <ArticleAd location="bottom_of_page" />
 
             {/* Article footer */}
             <footer className="border-t border-gray-700 pt-6">
