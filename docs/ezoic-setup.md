@@ -15,7 +15,10 @@ public setup guidance; it cannot access or update your Ezoic account.
    enabling the redirect. If Ezoic supplies a different manager account ID,
    update the destination in `website/src/app/ads.txt/route.ts`.
 4. Choose Ezoic consent management in **Settings → Privacy → Consent Management**,
-   and supply the required privacy policy URL and Ezoic wording. The SDK uses
+   and register `https://techwiki.co.uk/privacy` as the privacy policy URL after
+   deployment. The policy includes the publisher disclosure retrieved from
+   `https://g.ezoic.net/privacy/techwiki.co.uk`; check for updated wording when
+   changing advertising providers or settings. The SDK uses
    Gatekeeper by default. Do not also inject another CMP. If retaining another
    CMP, explicitly change the provider to `consent="third-party"` and select that
    CMP in the dashboard.

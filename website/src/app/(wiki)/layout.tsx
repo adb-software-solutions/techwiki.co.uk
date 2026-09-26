@@ -111,7 +111,7 @@ export default async function WikiLayout({ children }: WikiLayoutProps) {
                                     Documentation and tutorials for developers
                                 </span>
                             </div>
-                            <div className="flex items-center gap-6 text-sm text-gray-400">
+                            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-400">
                                 <Link
                                     href="/about"
                                     className="hover:text-white"
@@ -123,6 +123,12 @@ export default async function WikiLayout({ children }: WikiLayoutProps) {
                                     className="hover:text-white"
                                 >
                                     Contribute
+                                </Link>
+                                <Link
+                                    href="/privacy"
+                                    className="hover:text-white"
+                                >
+                                    Privacy Policy
                                 </Link>
                                 <a
                                     href="https://github.com/adb-software-solutions"

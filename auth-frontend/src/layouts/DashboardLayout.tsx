@@ -46,6 +46,14 @@ export default function DashboardLayout() {
             <main className="mx-auto max-w-9/12 px-4 py-8 sm:px-6 lg:px-8">
                 <Outlet />
             </main>
+            <footer className="px-4 py-6 text-center text-sm text-slate-600 dark:text-slate-400">
+                <a
+                    href={`${(import.meta.env.VITE_APP_URL || "https://techwiki.co.uk").replace(/\/$/, "")}/privacy`}
+                    className="underline underline-offset-4 hover:text-blue-500"
+                >
+                    Privacy Policy
+                </a>
+            </footer>
         </div>
     );
 }

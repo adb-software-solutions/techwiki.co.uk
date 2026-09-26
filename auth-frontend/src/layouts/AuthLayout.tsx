@@ -16,6 +16,14 @@ export default function AuthLayout() {
                     <Outlet />
                 </div>
             </div>
+            <footer className="px-4 py-6 text-center text-sm text-slate-600 dark:text-slate-400">
+                <a
+                    href={`${(import.meta.env.VITE_APP_URL || "https://techwiki.co.uk").replace(/\/$/, "")}/privacy`}
+                    className="underline underline-offset-4 hover:text-blue-500"
+                >
+                    Privacy Policy
+                </a>
+            </footer>
         </div>
     );
 }

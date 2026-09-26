@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
     if (
         pathname.match(/^\/[a-z0-9-]+$/) &&
         !pathname.match(
-            /^\/(categories|articles|search|blog|about|contribute|dashboard|new|edit|login|signup|backup|linux|windows|networking|databases|web-servers|cms|cloud|virtualization|general)$/,
+            /^\/(categories|articles|search|blog|about|privacy|contribute|dashboard|new|edit|login|signup|backup|linux|windows|networking|databases|web-servers|cms|cloud|virtualization|general)$/,
         )
     ) {
         try {

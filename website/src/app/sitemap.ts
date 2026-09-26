@@ -8,6 +8,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // content-derived timestamp rather than claiming they changed on every hit.
     const staticPages: MetadataRoute.Sitemap = [
         {
+            url: `${BASE_URL}/privacy`,
+            changeFrequency: "yearly",
+            priority: 0.3,
+        },
+        {
             url: BASE_URL,
             changeFrequency: "daily",
             priority: 1.0,
