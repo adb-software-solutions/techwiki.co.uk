@@ -2,8 +2,6 @@
 
 import Script from "next/script";
 
-import { EZOIC_ENABLED } from "./ezoic-config";
-
 const ADSENSE_CLIENT_ID = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
 
 /**
@@ -11,7 +9,7 @@ const ADSENSE_CLIENT_ID = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
  * Include this once in the root layout.
  */
 export function GoogleAdSenseScript() {
-    if (!ADSENSE_CLIENT_ID || EZOIC_ENABLED) {
+    if (!ADSENSE_CLIENT_ID) {
         return null;
     }
 

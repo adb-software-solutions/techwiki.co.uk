@@ -30,7 +30,7 @@ const sections = [
         title: "Cookies and browser storage",
         paragraphs: [
             "Sign-in and security cookies support authentication and protect against forged requests. The authentication service also stores your theme preference in local storage. Internal analytics can use a browser session-storage identifier called tw_session_id to group activity within a browsing session.",
-            "When enabled, Google Analytics uses cookies and related identifiers to measure visits and interactions. Ezoic and Google advertising services may also use cookies and similar technologies, as described below. The services that operate on a particular visit depend on which features are enabled and the applicable consent settings.",
+            "When enabled, Google Analytics uses cookies and related identifiers to measure visits and interactions. Google advertising services may also use cookies and similar technologies, as described below. The services that operate on a particular visit depend on which features are enabled and the applicable consent settings.",
             "Use the consent controls displayed on the site to review advertising choices. You can also block or delete cookies through your browser and clear local or session storage. Blocking essential cookies may prevent sign-in or other account features from working. Clearing browser storage does not itself delete information already held on our servers. Contact us if you need help with a privacy choice.",
         ],
     },
@@ -39,8 +39,8 @@ const sections = [
         title: "Service providers and international processing",
         paragraphs: [
             "Hosting, infrastructure, email delivery and security providers process information needed to run TechWiki. Authorised administrators and moderators can access information needed for their responsibilities. We may disclose information where required by law or to investigate abuse and protect the service or its users.",
-            "When enabled, Google receives information through Google Analytics or Google advertising services. Ezoic and its advertising partners process information for ad delivery, measurement and personalisation. Public contributions can be accessed by other visitors, search engines and services that index the site.",
-            "Some providers, including Google and Ezoic, operate internationally and may process information outside the United Kingdom, including in the United States. Their privacy notices explain their processing locations and transfer safeguards. You can contact us for further information about the providers used for your data and the safeguards applicable to a transfer.",
+            "When enabled, Google receives information through Google Analytics or Google advertising services. Public contributions can be accessed by other visitors, search engines and services that index the site.",
+            "Some providers, including Google, operate internationally and may process information outside the United Kingdom, including in the United States. Their privacy notices explain their processing locations and transfer safeguards. You can contact us for further information about the providers used for your data and the safeguards applicable to a transfer.",
         ],
     },
     {
@@ -97,9 +97,6 @@ export default function PrivacyPage() {
                         </li>
                     ))}
                     <li>
-                        <a href="#ezoic">Ezoic services</a>
-                    </li>
-                    <li>
                         <a href="#updates">Changes to this policy</a>
                     </li>
                 </ul>
@@ -143,77 +140,6 @@ export default function PrivacyPage() {
                     </div>
                 </section>
             ))}
-
-            {/* Ezoic's publisher disclosure, retrieved from
-                https://g.ezoic.net/privacy/techwiki.co.uk on 2026-09-26.
-                Kept as static text so the policy remains readable without scripts. */}
-            <section id="ezoic" className="scroll-mt-24 space-y-4 leading-7">
-                <h2 className="text-2xl font-semibold text-white">
-                    Ezoic services
-                </h2>
-                <p>
-                    This website uses the services of Ezoic Inc. (“Ezoic”),
-                    including to manage third-party interest-based advertising.
-                    Ezoic may employ a variety of technologies on this website,
-                    including tools to serve content, display advertisements and
-                    enable advertising to visitors of this website, which may
-                    utilize first and third-party cookies.
-                </p>
-                <p>
-                    A cookie is a small text file sent to your device by a web
-                    server that enables the website to remember information
-                    about your browsing activity. First-party cookies are
-                    created by the site you are visiting, while third-party
-                    cookies are set by domains other than the one you&apos;re
-                    visiting. Ezoic and our partners may place third-party
-                    cookies, tags, beacons, pixels, and similar technologies to
-                    monitor interactions with advertisements and optimize ad
-                    targeting. Please note that disabling cookies may limit
-                    access to certain content and features on the website, and
-                    rejecting cookies does not eliminate advertisements but will
-                    result in non-personalized advertising. You can find more
-                    information about cookies and how to manage them{" "}
-                    <a href="https://allaboutcookies.org/">here</a>.
-                </p>
-                <p>
-                    The following information may be collected, used, and stored
-                    in a cookie when serving personalized ads:
-                </p>
-                <ul className="list-disc space-y-1 pl-6">
-                    <li>IP address</li>
-                    <li>Operating system type and version</li>
-                    <li>Device type</li>
-                    <li>Language preferences</li>
-                    <li>Web browser type</li>
-                    <li>Email (in a hashed or encrypted form)</li>
-                </ul>
-                <p>
-                    Ezoic and its partners may use this data in combination with
-                    information that has been independently collected to deliver
-                    targeted advertisements across various platforms and
-                    websites. Ezoic’s partners may also gather additional data,
-                    such as unique IDs, advertising IDs, geolocation data, usage
-                    data, device information, traffic data, referral sources,
-                    and interactions between users and websites or
-                    advertisements, to create audience segments for targeted
-                    advertising across different devices, browsers, and apps.
-                    You can find more information about interest-based
-                    advertising and how to manage them{" "}
-                    <a href="https://youradchoices.com/">here</a>.
-                </p>
-                <p>
-                    You can view{" "}
-                    <a href="https://ezoic.com/privacy/">
-                        Ezoic’s privacy policy here
-                    </a>
-                    , or for additional information about Ezoic’s advertising
-                    and other partners, you can view{" "}
-                    <a href="https://www.ezoic.com/privacy-policy/advertising-partners/">
-                        Ezoic’s advertising partners here
-                    </a>
-                    .
-                </p>
-            </section>
 
             <section id="updates" className="scroll-mt-24">
                 <h2 className="mb-4 text-2xl font-semibold text-white">

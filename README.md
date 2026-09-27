@@ -133,31 +133,22 @@ Visit [localhost:3000](http://localhost:3000) for the wiki and [localhost:5173](
 
 ### Analytics and advertising
 
-Google Analytics, AdSense, and Ezoic are optional. Configure public build-time
-values in `website/.env.local` for development and in the website's Infisical
-application environment for production. The website workflow exports them to
+Google Analytics and AdSense are optional. Configure public build-time values
+in `website/.env.local` for development and in the website's Infisical application
+environment for production. The website workflow exports them to
 `website/.ci.env` before building the Docker image.
 
 ```dotenv
 NEXT_PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX
 NEXT_PUBLIC_ADSENSE_CLIENT_ID=ca-pub-0000000000000000
-NEXT_PUBLIC_EZOIC_ADS_TXT_ENABLED=false
-NEXT_PUBLIC_EZOIC_ENABLED=false
 ```
 
-Without Ezoic, the AdSense client ID enables its script, account metadata, and
-local `/ads.txt` seller entry. Enabling Ezoic suppresses the direct AdSense
-script. Link AdSense through Ezoic Mediation if you want to keep it as a demand
-source.
+The AdSense client ID enables its script, account metadata, and the local
+`/ads.txt` seller entry. Rebuild the website image after changing these values.
 
-Ezoic uses the official React SDK (1.1.0), one provider, and two named placements
-above and below the article body on both article routes. The SDK manages consent
-scripts and SPA mode; placements remount on pathname changes to clean up and
-request ads for the new article. Named placements require no dashboard IDs.
-
-See [Ezoic setup](docs/ezoic-setup.md) for dashboard prerequisites, ads.txt
-activation, deployment, and verification. Both Ezoic flags default to off and
-require a rebuild when changed.
+The privacy policy is available at `/privacy` and is linked from website and
+account-page footers. Review privacy and consent settings before enabling
+analytics or advertising.
 
 ## Common commands
 

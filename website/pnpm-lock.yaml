@@ -7,9 +7,6 @@ settings:
 importers:
     .:
         dependencies:
-            "@ezoic/react-sdk":
-                specifier: 1.1.0
-                version: 1.1.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
             "@headlessui/react":
                 specifier: ^2.2.2
                 version: 2.2.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -740,16 +737,6 @@ packages:
                 integrity: sha512-ZAoA40rNMPwSm+AeHpCq8STiNAwzWLJuP8Xv4CHIc9wv/PSuExjMrmjfYNj682vW0OOiZ1HKxzvjQr9XZIisQA==,
             }
         engines: { node: ^18.18.0 || ^20.9.0 || >=21.1.0 }
-
-    "@ezoic/react-sdk@1.1.0":
-        resolution:
-            {
-                integrity: sha512-2CBrkwfI2RL6KSLUseQD3He9h6+hEf1rOB81v/XXD07YW9fZ9mxrgLavxI8HsxFbewOPVQRZ1niC6vMjcyecGQ==,
-            }
-        engines: { node: ">=20" }
-        peerDependencies:
-            react: ">=18"
-            react-dom: ">=18"
 
     "@floating-ui/core@1.7.0":
         resolution:
@@ -7737,11 +7724,6 @@ snapshots:
         dependencies:
             "@eslint/core": 0.13.0
             levn: 0.4.1
-
-    "@ezoic/react-sdk@1.1.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
-        dependencies:
-            react: 19.1.0
-            react-dom: 19.1.0(react@19.1.0)
 
     "@floating-ui/core@1.7.0":
         dependencies:

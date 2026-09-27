@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import { GoogleAdSenseScript } from "@/lib/analytics/AdSense";
-import { EzoicAdsProvider } from "@/lib/analytics/Ezoic";
 import { GoogleAnalytics } from "@/lib/analytics/GoogleAnalytics";
 import "./globals.css";
 
@@ -104,7 +103,7 @@ export default async function RootLayout({
             <body className="h-full bg-[#1c324a] text-gray-200">
                 <GoogleAnalytics />
                 <GoogleAdSenseScript />
-                <EzoicAdsProvider>{children}</EzoicAdsProvider>
+                {children}
             </body>
         </html>
     );
