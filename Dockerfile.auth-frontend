@@ -26,4 +26,9 @@ COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 
+# GET /healthz is answered by nginx itself (nginx.conf); nginx on the host
+# keeps it off the public site. busybox wget is in the Alpine image.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+
 CMD ["nginx", "-g", "daemon off;"]
