@@ -31,8 +31,21 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/next.config.js ./next.config.js
+COPY --from=builder /app/src/lib/observability/json-console.mjs ./src/lib/observability/json-console.mjs
+
+# JSON logs on stdout for Loki: every Node.js process preloads
+# json-console.mjs, which formats console output when LOG_FORMAT=json.
+ENV LOG_FORMAT=json \
+    NODE_OPTIONS=--import=/app/src/lib/observability/json-console.mjs
 
 USER nextjs
 
 EXPOSE 3000
+
+# GET /healthz on the server itself; /metrics (Prometheus) is beside it.
+# nginx keeps both off the public site. The image has no curl, so Node's
+# fetch makes the request.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD ["node", "-e", "fetch('http://127.0.0.1:3000/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+
 CMD ["node_modules/.bin/next", "start"]

@@ -16,6 +16,7 @@
         "@headlessui/tailwindcss": "^0.2.2",
         "@heroicons/react": "^2.2.0",
         "@icons-pack/react-simple-icons": "^12.7.0",
+        "@prometheus-io/client": "0.16.1",
         "@reduxjs/toolkit": "^2.7.0",
         "@rescale/nemo": "^2.0.1",
         "@types/node": "^22.15.3",

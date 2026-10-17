@@ -10,6 +10,11 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
+    // Docker's health check and Prometheus: never redirect or look these up.
+    if (pathname === "/healthz" || pathname === "/metrics") {
+        return NextResponse.next();
+    }
+
     // Handle MediaWiki Category:Name URLs -> /category-slug
     if (pathname.startsWith("/Category:")) {
         const categoryName = pathname.slice(10); // Remove "/Category:"
