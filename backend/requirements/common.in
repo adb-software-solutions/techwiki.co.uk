@@ -22,6 +22,9 @@ starlette==1.6.0
 # Celery / Cache Dependencies
 redis==8.1.0
 django-redis==7.0.0
+# Metrics
+django-prometheus==2.5.0
+prometheus-client==0.26.0
 # Other dependencies
 requests==2.34.2
 msal==1.37.0

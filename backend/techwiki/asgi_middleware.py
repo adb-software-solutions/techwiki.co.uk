@@ -41,33 +41,33 @@ class GraphQL400LoggerMiddleware:
         """
         path = scope.get("path", "")
         method = scope.get("method", "")
-        logger.info("[ASGI] Received %s %s", method, path)
+        logger.debug("[ASGI] Received %s %s", method, path)
 
         if scope.get("type") != "http" or scope.get("path") != "/graphql/":
             # The wrapped app (self.app) has a signature that mypy infers from
             # Django, which is slightly different from the standard ASGIApp.
             # We ignore the type error because we know they are compatible in practice.
-            logger.info("[ASGI] Passing to Django: %s %s", method, path)
+            logger.debug("[ASGI] Passing to Django: %s %s", method, path)
 
             # Wrap send to log when response is sent
             async def wrapped_send(message: Message) -> None:
                 if message["type"] == "http.response.start":
-                    logger.info(
+                    logger.debug(
                         "[ASGI] Sending response start for: %s %s - status: %s",
                         method,
                         path,
                         message.get("status"),
                     )
                 elif message["type"] == "http.response.body":
-                    logger.info("[ASGI] Sending response body for: %s %s", method, path)
+                    logger.debug("[ASGI] Sending response body for: %s %s", method, path)
                 await send(message)
 
-            logger.info("[ASGI] About to call Django app for: %s %s", method, path)
+            logger.debug("[ASGI] About to call Django app for: %s %s", method, path)
             await self.app(scope, receive, wrapped_send)  # type: ignore[arg-type]
-            logger.info("[ASGI] Django returned for: %s %s", method, path)
+            logger.debug("[ASGI] Django returned for: %s %s", method, path)
             return
 
-        logger.info("[ASGI] Processing GraphQL request")
+        logger.debug("[ASGI] Processing GraphQL request")
         body: bytes = b""
         more_body: bool = True
         received_messages: list[Message] = []

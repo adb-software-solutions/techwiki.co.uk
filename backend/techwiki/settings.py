@@ -20,6 +20,8 @@ from pathlib import Path
 import django_stubs_ext
 from django.templatetags.static import static
 
+from techwiki.logs import logging_config
+
 logger = logging.getLogger(__name__)
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -39,13 +41,6 @@ if DEBUG or RUNNING_MYPY:
     SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-techwiki-development-only")
 else:
     SECRET_KEY = os.environ["SECRET_KEY"]
-
-if DEBUG:
-    # will output to your console
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-    )
 
 SITE_DOMAIN = os.environ.get("SITE_DOMAIN", "localhost")
 
@@ -98,6 +93,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django_prometheus",
 ]
 
 UNFOLD = {
@@ -119,6 +115,9 @@ if DEBUG_TOOLBAR_ENABLED:
 AUTH_USER_MODEL = "authentication.User"
 
 MIDDLEWARE = [
+    # First: answers /healthz and /metrics (see techwiki/health.py).
+    "techwiki.health.health_middleware",
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -129,6 +128,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "ninja.compatibility.files.fix_request_files_middleware",
     "apps.wiki.middleware.SanitizeRenderedHtmlMiddleware",
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
 if DEBUG_TOOLBAR_ENABLED:
@@ -313,3 +313,7 @@ if DEBUG:
     SESSION_COOKIE_SECURE = True
     # Disable rate limiting in development since Redis might not be available
     RATE_LIMIT_DISABLED = True
+
+# Plain text locally; JSON lines (for Loki) with LOG_FORMAT=json, as in the
+# Docker images.
+LOGGING = logging_config(os.environ.get("LOG_LEVEL", "INFO"))

@@ -174,6 +174,27 @@ docker build -f Dockerfile.auth-frontend -t techwiki-auth-frontend .
 
 The images expose ports `8000`, `3000`, and `80`. Supply secrets and infrastructure addresses through the deployment environment; never commit them.
 
+### Health, metrics and logs
+
+Every container image is ready for Prometheus, Grafana and Loki. Docker's
+`HEALTHCHECK` calls `/healthz` every 30 seconds, and adb-deploy waits for it
+on deploy. nginx (adb-deploy) answers 404 for `/healthz` and `/metrics` on the
+public domains, so both are only reachable on the host.
+
+- **Backend** (port 8000): `/healthz` answers **200** `ok`, or **200** `degraded` when PostgreSQL or a Redis/Valkey cache does not answer (restarting the backend would not fix them, and a deploy should not wait on them), with one entry per check: `database`, `cache:default`, `cache:session`. `/metrics` is django-prometheus: requests, responses and latency by view, method and status, summed over all Gunicorn workers (Prometheus multiprocess mode, set up by `entrypoint.sh` and `backend/gunicorn.conf.py`). Both are answered by `techwiki.health`, first in `MIDDLEWARE`, so the host check, HTTPS redirect and login do not apply and neither is counted in the request metrics.
+- **Website** (port 3000): `/healthz` answers **200** `ok` whenever the server answers (it does not check the API, and the redirect middleware lets both paths through). `/metrics` has `http_request_duration_seconds{method, status_code}` and the Node.js process metrics.
+- **Authentication frontend** (port 80): a static build served by nginx, which answers `/healthz` itself. There is no `/metrics` (no application runtime to measure); its access log is JSON, without query strings.
+
+A process that cannot answer at all fails the check, so none reports
+`unhealthy` itself.
+
+Logs are one JSON object per line on stdout in every image (`LOG_FORMAT=json`):
+`time`, `level`, `logger`, `message`, `service` (`techwiki-backend`, `techwiki-website` or
+`techwiki-auth-frontend`), and `exception`
+when there is one. Gunicorn, Uvicorn and Next.js output is included.
+Without `LOG_FORMAT=json`, as in local development, logs stay plain text.
+`LOG_LEVEL` (default `INFO`) sets the backend level.
+
 ## Quality and security
 
 CI runs Django, Jest, and Vitest tests; Ruff, mypy, ESLint, Prettier, Stylelint, ShellCheck, and template checks; production builds; Trivy scans; coverage; and bundle analysis.
