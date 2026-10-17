@@ -46,6 +46,14 @@ EXPOSE 8000
 COPY ./entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Run as www-data (uid/gid 33), the user nginx runs as on the host: the
+# static and media bind mounts belong to it, and nginx serves what the
+# application writes there. The code stays root-owned and read-only to
+# the application; it writes only to the mounts, /tmp and its home
+# (/var/www, for library caches).
+RUN install -d -o www-data -g www-data -m 0755 /var/www
+USER www-data
+
 ENTRYPOINT ["/entrypoint.sh"]
 
 # GET /healthz on Gunicorn inside the container; /metrics (Prometheus) is
