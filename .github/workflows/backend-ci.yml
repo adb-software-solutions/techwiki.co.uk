@@ -71,3 +71,15 @@ jobs:
             images: '["backend"]'
             infisical-identity-id: 8b59f6b8-7757-4379-a381-a2403ed715f6
             infisical-registry-project-id: 848009f4-aa7d-45e2-8fb6-404bd8f25115
+
+    docker-build:
+        # Pull requests build the images without pushing them.
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == false }}
+        needs: [lint, django, trivy]
+        permissions:
+            contents: read
+            id-token: write
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/docker-build-ci.yml@v1
+        with:
+            application: techwiki
+            images: '["backend"]'

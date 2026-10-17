@@ -73,3 +73,19 @@ jobs:
             infisical-application-project-id: 000b37bc-9883-4779-a09f-52045d454d73
             build-env-file: website/.ci.env
             build-env-keys: '["NEXT_PUBLIC_GA_MEASUREMENT_ID","NEXT_PUBLIC_ADSENSE_CLIENT_ID","NEXT_PUBLIC_API_URL","NEXT_PUBLIC_AUTH_URL"]'
+
+    docker-build:
+        # Pull requests build the images without pushing them.
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == false }}
+        needs: [lint, frontend, trivy]
+        permissions:
+            contents: read
+            id-token: write
+        uses: adb-software-solutions/github-actions-workflows/.github/workflows/docker-build-ci.yml@v1
+        with:
+            application: techwiki
+            images: '["website"]'
+            infisical-identity-id: 0d9fa906-682d-4a09-8161-00b0749e757e
+            infisical-application-project-id: 52cb4e76-fb16-41a8-8438-93801584b903
+            build-env-file: website/.ci.env
+            optional-build-env-keys: '["NEXT_PUBLIC_GA_MEASUREMENT_ID","NEXT_PUBLIC_ADSENSE_CLIENT_ID","NEXT_PUBLIC_API_URL","NEXT_PUBLIC_AUTH_URL"]'
