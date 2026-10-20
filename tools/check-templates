@@ -18,10 +18,7 @@ from zulint import lister  # type: ignore[import-not-found]
 
 from tools.lib.html_branches import build_id_dict  # type: ignore[import-not-found]
 from tools.lib.pretty_print import validate_indent_html  # type: ignore[import-not-found]
-from tools.lib.template_parser import (  # type: ignore[import-not-found]
-    TemplateParserError,
-    validate,
-)
+from tools.lib.template_parser import TemplateParserError, validate  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
 

@@ -1210,7 +1210,7 @@ def begin_passkey_registration(
         exclude_credentials = [
             {
                 "type": "public-key",
-                "id": bytes_to_base64url(pk.credential_id),
+                "id": bytes_to_base64url(bytes(pk.credential_id)),
                 "transports": pk.transports or [],
             }
             for pk in existing_passkeys
