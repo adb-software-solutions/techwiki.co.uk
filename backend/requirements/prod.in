@@ -2,3 +2,8 @@
 # /tools/update-locked-requirements to update requirements/prod.txt.
 # See requirements/README.md for more detail.
 -r common.in
+certifi>=2026.10.19  # Security: GHSA-6q48-6c7w-9gw2 (transitive).
+h11>=0.16.0  # Security: GHSA-vqfr-h8mv-ghfj (transitive).
+pyjwt>=2.15.0  # Security: GHSA-ffc3-869f-jxw9 (transitive).
+urllib3>=2.8.0  # Security: GHSA-2xpw-w6gg-jr37 (transitive).
+idna>=3.15  # Security: GHSA-65pc-fj4g-8rjx (transitive).

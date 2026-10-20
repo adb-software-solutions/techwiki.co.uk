@@ -2,13 +2,13 @@
 # /tools/update-locked-requirements to update requirements/dev.txt
 # and requirements/mypy.txt.
 # See requirements/README.md for more detail.
-mypy==1.17.1
+mypy==2.4.0
 
-types-psycopg2==2.9.21.20250809
-types-requests==2.32.4.20250809
-types-pytz==2025.2.0.20250809
-types-Markdown==3.10.0.20251106
+types-psycopg2==2.9.21.20261008
+types-requests==2.33.0.20261006
+types-pytz==2026.5.0.20261006
+types-Markdown==3.10.2.20261007
 
-django-stubs==5.2.2
+django-stubs==6.0.9
 
 types-Pillow==10.2.0.20240822
