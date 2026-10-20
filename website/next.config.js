@@ -38,12 +38,11 @@ const nextConfig = {
         return [
             {
                 source: "/:category/:slug.md",
-                destination: "/api/content/v1/markdown?path=:category/:slug",
+                destination: "/api/content/v1/markdown/:category/:slug",
             },
             {
                 source: "/:parent/:category/:slug.md",
-                destination:
-                    "/api/content/v1/markdown?path=:parent/:category/:slug",
+                destination: "/api/content/v1/markdown/:parent/:category/:slug",
             },
         ];
     },
