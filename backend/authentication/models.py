@@ -200,8 +200,4 @@ from authentication.passkeys.models import Passkey, PasskeyChallenge  # noqa: F4
 from authentication.sessions.models import UserSession  # noqa: F401
 
 # Import 2FA models so they are registered with Django
-from authentication.twofactor.models import (  # noqa: F401
-    RecoveryCode,
-    TwoFactorChallenge,
-    TwoFactorMethod,
-)
+from authentication.twofactor.models import RecoveryCode, TwoFactorChallenge, TwoFactorMethod  # noqa: F401

@@ -44,9 +44,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
                     url: `${BASE_URL}${article.url}`,
                     lastModified: new Date(article.lastModified),
                     changeFrequency: article.changeFrequency as
-                        | "daily"
-                        | "weekly"
-                        | "monthly",
+                        "daily" | "weekly" | "monthly",
                     priority: article.priority,
                 }));
 
@@ -55,9 +53,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
                     url: `${BASE_URL}${category.url}`,
                     lastModified: new Date(category.lastModified),
                     changeFrequency: category.changeFrequency as
-                        | "daily"
-                        | "weekly"
-                        | "monthly",
+                        "daily" | "weekly" | "monthly",
                     priority: category.priority,
                 }));
 

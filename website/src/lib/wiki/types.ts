@@ -55,11 +55,7 @@ export type ArticleStatus =
     | "archived";
 
 export type ArticleType =
-    | "documentation"
-    | "tutorial"
-    | "blog"
-    | "guide"
-    | "reference";
+    "documentation" | "tutorial" | "blog" | "guide" | "reference";
 
 export interface ArticleSummary {
     id: string;

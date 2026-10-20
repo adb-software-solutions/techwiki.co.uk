@@ -2,9 +2,8 @@
 // by src/lib/observability/json-console.mjs; see Dockerfile.website.)
 export async function register(): Promise<void> {
     if (process.env.NEXT_RUNTIME === "nodejs") {
-        const { trackHttpRequests } = await import(
-            "@/lib/observability/metrics"
-        );
+        const { trackHttpRequests } =
+            await import("@/lib/observability/metrics");
         trackHttpRequests();
     }
 }

@@ -376,7 +376,7 @@ def get_analytics_dashboard(
     total_with_referrer = sum(r["count"] for r in referrer_stats)
     traffic_sources = [
         TrafficSourceResponse(
-            source=item["referrer"][:100],
+            source=(item["referrer"] or "")[:100],
             count=item["count"],
             percentage=(item["count"] / total_with_referrer * 100)
             if total_with_referrer > 0
@@ -439,7 +439,7 @@ def get_realtime_analytics(
     return {
         "success": True,
         "active_users": active_sessions,
-        "top_pages": list(recent_views),
+        "top_pages": [{"path": view["path"], "count": view["count"]} for view in recent_views],
         "timestamp": timezone.now().isoformat(),
     }
 

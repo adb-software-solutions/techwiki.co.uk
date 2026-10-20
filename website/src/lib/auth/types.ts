@@ -31,11 +31,7 @@ export interface WikiUser {
 }
 
 export type WikiUserRole =
-    | "reader"
-    | "contributor"
-    | "trusted_contributor"
-    | "moderator"
-    | "admin";
+    "reader" | "contributor" | "trusted_contributor" | "moderator" | "admin";
 
 export interface AuthState {
     user: WikiUser | null;
