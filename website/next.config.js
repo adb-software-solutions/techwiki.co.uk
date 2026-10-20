@@ -1,8 +1,17 @@
+const path = require("node:path");
+
+// The pnpm workspace's root: its node_modules holds the packages that
+// website/node_modules links to.
+const workspaceRoot = path.join(__dirname, "..");
+
 /** @type {import('next').NextConfig} */
 
 const nextConfig = {
     reactStrictMode: false,
-    outputFileTracingRoot: __dirname,
+    outputFileTracingRoot: workspaceRoot,
+    turbopack: {
+        root: workspaceRoot,
+    },
     images: {
         remotePatterns: [
             {
