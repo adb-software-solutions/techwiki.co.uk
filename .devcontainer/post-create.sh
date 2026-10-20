@@ -29,9 +29,8 @@ if [ ! -f .devcontainer/.env ]; then
 fi
 
 echo "Installing frontend dependencies..."
+# One pnpm workspace: this installs website and auth-frontend too.
 pnpm install
-cd /workspace/website && pnpm install
-cd /workspace/auth-frontend && pnpm install
 
 # Wait for database to be ready using Python and psycopg2
 echo "Waiting for database to be ready..."

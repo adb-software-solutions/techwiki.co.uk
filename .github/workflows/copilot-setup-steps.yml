@@ -80,23 +80,10 @@ jobs:
               with:
                   node-version: "22"
                   cache: "pnpm"
-                  cache-dependency-path: |
-                      pnpm-lock.yaml
-                      website/pnpm-lock.yaml
-                      auth-frontend/pnpm-lock.yaml
+                  cache-dependency-path: pnpm-lock.yaml
 
-            - name: Install root Node dependencies
-              if: ${{ hashFiles('pnpm-lock.yaml') != '' }}
-              run: pnpm install --frozen-lockfile
-
-            - name: Install website Node dependencies
-              if: ${{ hashFiles('website/pnpm-lock.yaml') != '' }}
-              working-directory: website
-              run: pnpm install --frozen-lockfile
-
-            - name: Install auth-frontend Node dependencies
-              if: ${{ hashFiles('auth-frontend/pnpm-lock.yaml') != '' }}
-              working-directory: auth-frontend
+            # One pnpm workspace: the root install covers website and auth-frontend.
+            - name: Install Node dependencies
               run: pnpm install --frozen-lockfile
 
             - name: Add node bin paths to PATH

@@ -7,4 +7,4 @@ LICENSE.md
 db.sqlite3
 .mypy_cache
 .env
-node_modules/
+**/node_modules/

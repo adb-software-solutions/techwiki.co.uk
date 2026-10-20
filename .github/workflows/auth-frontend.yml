@@ -9,6 +9,7 @@ on:
             - ".github/workflows/auth-frontend.yml"
             - "tools/**"
             - "pnpm-lock.yaml"
+            - "pnpm-workspace.yaml"
             - "package.json"
             - "README.md"
     pull_request:
@@ -19,6 +20,7 @@ on:
             - ".github/workflows/auth-frontend.yml"
             - "tools/**"
             - "pnpm-lock.yaml"
+            - "pnpm-workspace.yaml"
             - "package.json"
             - "README.md"
     workflow_dispatch:
@@ -34,7 +36,7 @@ jobs:
             contents: read
         uses: adb-software-solutions/github-actions-workflows/.github/workflows/lint.yml@v1
         with:
-            lint-command: pnpm --dir website install --frozen-lockfile && pnpm --dir auth-frontend install --frozen-lockfile && tools/lint
+            lint-command: tools/lint
 
     frontend:
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}

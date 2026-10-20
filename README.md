@@ -66,16 +66,15 @@ Install dependencies:
 
 ```bash
 corepack enable
-corepack prepare pnpm@10.11.0 --activate
+corepack prepare pnpm@10.15.0 --activate
 
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r backend/requirements/dev.txt
 
+# One pnpm workspace (pnpm-workspace.yaml): installs website and auth-frontend too
 pnpm install --frozen-lockfile
-pnpm --dir website install --frozen-lockfile
-pnpm --dir auth-frontend install --frozen-lockfile
 ```
 
 ### Backend
