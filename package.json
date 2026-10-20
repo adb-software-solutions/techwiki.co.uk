@@ -4,11 +4,11 @@
     "description": "",
     "main": "index.js",
     "dependencies": {
-        "docker-compose": "^1.2.0",
+        "docker-compose": "^1.5.0",
         "eslint": "^9.33.0",
-        "prettier": "^3.6.2",
-        "stylelint": "^16.23.1",
-        "svgo": "^3.3.2"
+        "prettier": "^3.9.10",
+        "stylelint": "^17.16.0",
+        "svgo": "^4.1.0"
     },
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1"
@@ -24,19 +24,19 @@
     },
     "homepage": "https://github.com/adbwebdesigns/ebay-software#readme",
     "devDependencies": {
-        "@babel/eslint-parser": "^7.28.0",
-        "@typescript-eslint/eslint-plugin": "^8.39.0",
-        "autoprefixer": "^10.4.21",
+        "@babel/eslint-parser": "^8.0.7",
+        "@typescript-eslint/eslint-plugin": "^8.72.0",
+        "autoprefixer": "^10.6.1",
         "eslint-config-prettier": "^10.1.8",
-        "eslint-plugin-formatjs": "^5.4.0",
+        "eslint-plugin-formatjs": "^8.1.2",
         "eslint-plugin-import": "^2.32.0",
-        "eslint-plugin-no-jquery": "^3.1.1",
-        "eslint-plugin-unicorn": "^57.0.0",
-        "globals": "^16.3.0",
-        "postcss": "^8.5.6",
-        "prettier-plugin-tailwindcss": "^0.6.14",
-        "stylelint-config-standard": "^37.0.0",
-        "tailwindcss": "^4.1.11"
+        "eslint-plugin-no-jquery": "^6.0.1",
+        "eslint-plugin-unicorn": "^61.0.2",
+        "globals": "^17.13.0",
+        "postcss": "^8.5.31",
+        "prettier-plugin-tailwindcss": "^0.8.1",
+        "stylelint-config-standard": "^40.0.0",
+        "tailwindcss": "^4.3.3"
     },
     "packageManager": "pnpm@10.12.1+sha512.f0dda8580f0ee9481c5c79a1d927b9164f2c478e90992ad268bbb2465a736984391d6333d2c327913578b2804af33474ca554ba29c04a8b13060a717675ae3ac"
 }

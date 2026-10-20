@@ -5,21 +5,25 @@
 -r prod.in
 -r mypy.in
 # For sorting imports
-isort==8.0.1
+isort==9.0.2
 # Python reformatter
-black==26.5.1
+black==26.10.1
 # For linting Git commit messages
 gitlint-core==0.19.1
 # Needed for updating the locked pip dependencies
-pip-tools==7.6.0
+pip-tools==7.6.2
 # Linting framework
 adamlint==1.1.0
 # For spell check linter
 codespell==2.4.3
 # For code coverage
-coverage==7.15.4
+coverage==7.16.2
 django-coverage-plugin==3.2.2
-flake8==7.3.0
-ruff==0.16.2
-fastmcp==3.4.6
+flake8==7.4.1
+ruff==0.17.1
+fastmcp==4.1.2
 pypi-package-updater==0.2.23
+aiohttp>=3.14.4  # Security: GHSA-2g87-pp6c-29x5 (transitive).
+sh>=2.2.4  # Security: GHSA-q38v-wp89-2w55 (transitive).
+mcp>=1.30.0  # Security: GHSA-84m7-p3x7-pcfv (transitive).
+multidict>=6.9.1  # Security: GHSA-54p9-h82j-f925 (transitive).
