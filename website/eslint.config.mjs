@@ -2,6 +2,11 @@ import pluginNext from "@next/eslint-plugin-next";
 import parser from "@typescript-eslint/parser";
 
 export default [
+    // On its own, so it applies to every config: beside other keys, `ignores`
+    // only narrows that one object and ESLint still lints the build output.
+    {
+        ignores: ["node_modules/**", ".next/**", "out", "coverage/**"],
+    },
     {
         name: "ESLint Config - nextjs",
         languageOptions: {
@@ -25,6 +30,5 @@ export default [
             "@next/next/no-html-link-for-pages": "off",
             "react-hooks/exhaustive-deps": 0,
         },
-        ignores: ["node_modules/**", ".next/**", "out", "coverage/**"],
     },
 ];
