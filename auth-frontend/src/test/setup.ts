@@ -1,4 +1,5 @@
-import "@testing-library/jest-dom";
+// The Vitest entry: it adds the matchers to Vitest's expect types too.
+import "@testing-library/jest-dom/vitest";
 
 // Mock window.matchMedia for theme detection
 Object.defineProperty(window, "matchMedia", {
