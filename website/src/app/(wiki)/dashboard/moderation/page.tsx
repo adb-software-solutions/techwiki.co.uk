@@ -160,8 +160,7 @@ export default function ModerationPage() {
                                         <span>•</span>
                                         <span>
                                             By: {article.author?.first_name}{" "}
-                                            {article.author?.last_name ||
-                                                article.author?.email}
+                                            {article.author?.last_name}
                                         </span>
                                         <span>•</span>
                                         <span>
