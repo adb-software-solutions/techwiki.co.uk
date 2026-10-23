@@ -6,9 +6,9 @@ on:
     workflow_dispatch:
         inputs:
             image_tag:
-                description: Docker image tag to deploy (use a full Git SHA for rollback)
-                required: true
-                default: latest
+                description: Leave empty to build and deploy this commit; a full Git SHA redeploys that image (rollback)
+                required: false
+                default: ""
                 type: string
 
 permissions:
@@ -21,7 +21,13 @@ jobs:
         uses: adb-software-solutions/github-actions-workflows/.github/workflows/deploy-application.yml@v1
         with:
             application: techwiki
-            image-tag: ${{ inputs.image_tag || 'latest' }}
+            image-tag: ${{ inputs.image_tag }}
+            infisical-registry-project-id: 848009f4-aa7d-45e2-8fb6-404bd8f25115
+            # Built from this commit and deployed by its SHA (build-on-deploy).
+            build-images: >-
+                [{"image": "auth-frontend", "build-env-file": "auth-frontend/.ci.env", "build-env-keys": ["VITE_APP_URL", "VITE_API_URL", "VITE_AUTH_URL"]},
+                "backend",
+                {"image": "website", "build-env-file": "website/.ci.env", "build-env-keys": ["NEXT_PUBLIC_GA_MEASUREMENT_ID", "NEXT_PUBLIC_ADSENSE_CLIENT_ID", "NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_AUTH_URL"]}]
             infisical-identity-id: 9d4773d2-4f23-434f-b66e-b9a4a826efdb
             infisical-application-project-id: 000b37bc-9883-4779-a09f-52045d454d73
             infisical-deployment-bootstrap-project-id: a1f87e48-bbea-4952-9498-723c15ba8c38
