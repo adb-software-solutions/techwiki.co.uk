@@ -121,17 +121,23 @@ class AuthoringOAuthClient(models.Model):
         name: str,
         redirect_uris: list[str],
         scopes: list[str],
+        confidential: bool = True,
     ) -> tuple[AuthoringOAuthClient, str]:
+        """Create a client; public (PKCE-only) clients get an empty secret."""
         client_id = f"tw_client_{secrets.token_urlsafe(18)}"
-        secret = f"tw_secret_{secrets.token_urlsafe(36)}"
+        secret = f"tw_secret_{secrets.token_urlsafe(36)}" if confidential else ""
         client = cls.objects.create(
             name=name,
             client_id=client_id,
-            client_secret_hash=_token_digest(secret),
+            client_secret_hash=_token_digest(secret) if confidential else "",
             redirect_uris=sorted(set(redirect_uris)),
             scopes=sorted(set(scopes)),
         )
         return client, secret
+
+    @property
+    def is_public(self) -> bool:
+        return not self.client_secret_hash
 
     def check_secret(self, raw: str) -> bool:
         return bool(raw) and secrets.compare_digest(self.client_secret_hash, _token_digest(raw))

@@ -68,6 +68,23 @@ python manage.py create_authoring_oauth_client "TechWiki ChatGPT" \
 
 Store the emitted client secret immediately; only its hash is retained.
 
+### Dynamic client registration
+
+MCP clients such as Claude Code can register themselves through `POST /oauth/register` (RFC 7591), advertised as `registration_endpoint` in the authorization server metadata. No manual client creation is needed:
+
+```bash
+claude mcp add --transport http techwiki-admin https://api.techwiki.co.uk/admin-mcp
+```
+
+Then choose **Authenticate** for `techwiki-admin` under `/mcp`.
+
+Registration is unauthenticated, so it is deliberately narrow:
+
+- Redirect URIs must be loopback (`http://localhost`, `127.0.0.1` or `[::1]`, any port) unless listed exactly in `TECHWIKI_AUTHORING_OAUTH_REDIRECT_URIS` (comma-separated, for hosted callbacks such as ChatGPT or claude.ai).
+- Clients may register as public (`token_endpoint_auth_method: none`, PKCE only) or confidential (a secret is returned once).
+- Registration is rate limited to 10 per hour per IP.
+- A registered client still cannot obtain tokens without the owner signing in and approving the consent screen, which shows the redirect URI.
+
 OAuth discovery is available at:
 
 ```text
