@@ -121,7 +121,6 @@ def article_to_summary(article: Article) -> dict[str, Any]:
             "id": str(article.author.id),
             "first_name": article.author.first_name,
             "last_name": article.author.last_name,
-            "email": article.author.email,
             "bio": profile.bio if profile else "",
             "photo": profile.photo.url if profile and profile.photo else None,
             "website": profile.website if profile else "",
