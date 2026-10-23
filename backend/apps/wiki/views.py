@@ -46,6 +46,14 @@ wiki_router = Router(tags=["wiki"])
 # ============================================================================
 
 
+MAX_PER_PAGE = 100
+
+
+def clamp_pagination(page: int, per_page: int) -> tuple[int, int]:
+    """Keep page at least 1 and per_page between 1 and MAX_PER_PAGE."""
+    return max(page, 1), min(max(per_page, 1), MAX_PER_PAGE)
+
+
 def render_markdown(content: str) -> str:
     """Render markdown to HTML with extensions."""
     md = markdown.Markdown(
@@ -436,6 +444,7 @@ def list_articles(  # noqa: PLR0917
     author_id: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """List published articles with filters."""
+    page, per_page = clamp_pagination(page, per_page)
     articles = (
         Article.objects.filter(status=ArticleStatus.PUBLISHED)
         .select_related("category", "author", "featured_image")
@@ -741,6 +750,7 @@ def search_articles(  # noqa: PLR0917
     per_page: int = 20,
 ) -> tuple[int, dict[str, Any]]:
     """Search published articles."""
+    page, per_page = clamp_pagination(page, per_page)
     if not q or len(q) < 2:
         return 200, {"success": False, "message": "Query must be at least 2 characters"}
 
@@ -1005,6 +1015,7 @@ def get_my_articles(
     per_page: int = 20,
 ) -> tuple[int, dict[str, Any]]:
     """Get current user's articles."""
+    page, per_page = clamp_pagination(page, per_page)
     if not request.user.is_authenticated:
         return 200, {"success": False, "message": "Authentication required"}
 
@@ -1185,6 +1196,7 @@ def get_current_user_articles(
     per_page: int = 20,
 ) -> tuple[int, dict[str, Any]]:
     """Get current user's articles."""
+    page, per_page = clamp_pagination(page, per_page)
     if not request.user.is_authenticated:
         return 200, {"success": False, "articles": [], "total": 0}
 
@@ -1307,6 +1319,7 @@ def get_author_articles(
     per_page: int = 20,
 ) -> tuple[int, dict[str, Any]]:
     """Get all published articles by an author."""
+    page, per_page = clamp_pagination(page, per_page)
     try:
         from authentication.models import User
 
