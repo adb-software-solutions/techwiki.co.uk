@@ -17,6 +17,7 @@ from apps.wiki.authoring_metadata import authoring_protected_resource_metadata
 from apps.wiki.authoring_oauth import (
     oauth_authorization_server_metadata,
     oauth_authorize,
+    oauth_register,
     oauth_revoke,
     oauth_token,
 )
@@ -30,6 +31,7 @@ urlpatterns = [
     path(".well-known/oauth-authorization-server", oauth_authorization_server_metadata),
     path(".well-known/oauth-protected-resource", authoring_protected_resource_metadata),
     path("oauth/authorize", oauth_authorize),
+    path("oauth/register", oauth_register),
     path("oauth/token", oauth_token),
     path("oauth/revoke", oauth_revoke),
     path("admin-mcp", authoring_mcp),

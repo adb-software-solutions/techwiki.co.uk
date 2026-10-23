@@ -41,6 +41,8 @@ RATE_LIMITS = {
     "resend_verification": RateLimitConfig(requests=3, window=3600, block_duration=0),
     # Passkey discovery auth: 10 per minute per IP
     "passkey_discover": RateLimitConfig(requests=10, window=60, block_duration=60),
+    # OAuth dynamic client registration: 10 per hour per IP
+    "oauth_register": RateLimitConfig(requests=10, window=3600, block_duration=3600),
     # API general: 100 requests per minute
     "api_general": RateLimitConfig(requests=100, window=60, block_duration=0),
 }
