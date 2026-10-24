@@ -110,6 +110,7 @@ class ArticleUpdateRequest(Schema):
     meta_title: str | None = None
     meta_description: str | None = None
     allow_comments: bool | None = None
+    status: str | None = None
     change_summary: str = ""
 
 
