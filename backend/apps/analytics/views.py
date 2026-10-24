@@ -1,34 +1,41 @@
 """Analytics API views using Django Ninja."""
 
 import contextlib
-from datetime import timedelta
+import re
+from collections import Counter
+from datetime import datetime, timedelta
+from typing import Any
+from urllib.parse import urlparse
 
-from django.db.models import Avg, Count, F
-from django.db.models.functions import TruncDate
+from django.core.exceptions import ValidationError
+from django.db.models import Avg, Count, F, Q, QuerySet
+from django.db.models.functions import Lower, Trunc, TruncDate
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router
 from ninja.errors import HttpError
 
-from apps.wiki.models import Article
+from apps.wiki.models import Article, ArticleStatus
 
-from .models import ArticleView, DailyStats, Event, PageView, SearchQuery
+from .models import ArticleView, Event, PageView, SearchQuery
 from .schemas import (
-    AnalyticsDashboardResponse,
-    AnalyticsSummaryResponse,
     ArticleViewRequest,
-    DailyStatsResponse,
-    DeviceBreakdownResponse,
+    EngagementRequest,
     EventRequest,
     PageViewRequest,
     SearchClickRequest,
     SearchQueryRequest,
-    TopArticleResponse,
-    TopSearchQueryResponse,
-    TrafficSourceResponse,
 )
 
 router = Router(tags=["Analytics"])
+
+BOT_PATTERN = re.compile(
+    r"bot|spider|crawl|slurp|headless|lighthouse|preview|facebookexternalhit|"
+    r"python-requests|curl|wget|httpclient|monitor",
+    re.IGNORECASE,
+)
+# Time on page beyond this is an idle tab, not reading.
+MAX_ENGAGED_SECONDS = 3600
 
 
 def get_client_ip(request: HttpRequest) -> str | None:
@@ -43,46 +50,56 @@ def parse_user_agent(user_agent: str) -> dict[str, str]:
     """Parse user agent string to extract device info."""
     user_agent_lower = user_agent.lower()
 
-    # Device type
-    if "mobile" in user_agent_lower or "android" in user_agent_lower:
-        if "tablet" in user_agent_lower or "ipad" in user_agent_lower:
-            device_type = "tablet"
-        else:
-            device_type = "mobile"
-    elif "bot" in user_agent_lower or "spider" in user_agent_lower or "crawler" in user_agent_lower:
+    # Device type. Bots first: crawler user agents often claim to be mobile.
+    if not user_agent or BOT_PATTERN.search(user_agent):
         device_type = "bot"
+    elif "ipad" in user_agent_lower or "tablet" in user_agent_lower:
+        device_type = "tablet"
+    elif "android" in user_agent_lower and "mobile" not in user_agent_lower:
+        device_type = "tablet"
+    elif "mobile" in user_agent_lower or "android" in user_agent_lower:
+        device_type = "mobile"
     else:
         device_type = "desktop"
 
     # Browser
-    if "chrome" in user_agent_lower and "edg" not in user_agent_lower:
-        browser = "Chrome"
-    elif "firefox" in user_agent_lower:
-        browser = "Firefox"
-    elif "safari" in user_agent_lower and "chrome" not in user_agent_lower:
-        browser = "Safari"
-    elif "edg" in user_agent_lower:
+    if "edg" in user_agent_lower:
         browser = "Edge"
-    elif "opera" in user_agent_lower or "opr" in user_agent_lower:
+    elif "opera" in user_agent_lower or "opr/" in user_agent_lower:
         browser = "Opera"
+    elif "firefox" in user_agent_lower or "fxios" in user_agent_lower:
+        browser = "Firefox"
+    elif "chrome" in user_agent_lower or "crios" in user_agent_lower:
+        browser = "Chrome"
+    elif "safari" in user_agent_lower:
+        browser = "Safari"
     else:
         browser = "Other"
 
-    # OS
-    if "windows" in user_agent_lower:
+    # OS. Check mobile platforms first: their user agents mention desktop ones.
+    if "iphone" in user_agent_lower or "ipad" in user_agent_lower:
+        os = "iOS"
+    elif "android" in user_agent_lower:
+        os = "Android"
+    elif "windows" in user_agent_lower:
         os = "Windows"
     elif "mac os" in user_agent_lower or "macos" in user_agent_lower:
         os = "macOS"
     elif "linux" in user_agent_lower:
         os = "Linux"
-    elif "android" in user_agent_lower:
-        os = "Android"
-    elif "iphone" in user_agent_lower or "ipad" in user_agent_lower:
-        os = "iOS"
     else:
         os = "Other"
 
     return {"device_type": device_type, "browser": browser, "os": os}
+
+
+def _published_article(article_id: str | None) -> Article | None:
+    if not article_id:
+        return None
+    try:
+        return Article.objects.get(id=article_id, status=ArticleStatus.PUBLISHED)
+    except (Article.DoesNotExist, ValueError, ValidationError):
+        return None
 
 
 # =============================================================================
@@ -91,18 +108,19 @@ def parse_user_agent(user_agent: str) -> dict[str, str]:
 
 
 @router.post("/track/pageview")
-def track_page_view(request: HttpRequest, data: PageViewRequest) -> dict[str, str | bool]:
-    """Track a page view."""
+def track_page_view(request: HttpRequest, data: PageViewRequest) -> dict[str, str | bool | None]:
+    """Track a page view, and the article view when the page is an article."""
     user_agent = request.META.get("HTTP_USER_AGENT", "")
     ua_info = parse_user_agent(user_agent)
+    if ua_info["device_type"] == "bot" or not data.session_id:
+        return {"success": True, "tracked": False, "id": None}
 
-    # Get user if authenticated
     user = request.user if request.user.is_authenticated else None
 
     page_view = PageView.objects.create(
         path=data.path,
         full_url=data.full_url or "",
-        referrer=data.referrer,
+        referrer=data.referrer or None,
         user=user,
         session_id=data.session_id,
         user_agent=user_agent,
@@ -110,10 +128,42 @@ def track_page_view(request: HttpRequest, data: PageViewRequest) -> dict[str, st
         device_type=ua_info["device_type"],
         browser=ua_info["browser"],
         os=ua_info["os"],
-        time_on_page=data.time_on_page,
     )
 
-    return {"success": True, "id": str(page_view.id)}
+    article = _published_article(data.article_id)
+    if article:
+        ArticleView.objects.create(
+            article=article,
+            page_view=page_view,
+            user=user,
+            session_id=data.session_id,
+        )
+        Article.objects.filter(id=article.id).update(view_count=F("view_count") + 1)
+
+    return {"success": True, "tracked": True, "id": str(page_view.id)}
+
+
+@router.post("/track/engagement")
+def track_engagement(request: HttpRequest, data: EngagementRequest) -> dict[str, bool]:
+    """Record visible time and scroll depth for a page view from the same session."""
+    try:
+        page_view = PageView.objects.get(id=data.page_view_id, session_id=data.session_id)
+    except (PageView.DoesNotExist, ValueError, ValidationError):
+        return {"success": False}
+
+    seconds = min(data.seconds, MAX_ENGAGED_SECONDS)
+    # The browser reports cumulative values, possibly more than once.
+    page_view.time_on_page = max(page_view.time_on_page or 0, seconds)
+    page_view.save(update_fields=["time_on_page"])
+
+    article_view = getattr(page_view, "article_view", None)
+    if article_view:
+        article_view.time_on_article = max(article_view.time_on_article or 0, seconds)
+        if data.scroll_depth is not None:
+            article_view.scroll_depth = max(article_view.scroll_depth or 0, data.scroll_depth)
+        article_view.save(update_fields=["time_on_article", "scroll_depth"])
+
+    return {"success": True}
 
 
 @router.post("/track/article")
@@ -143,10 +193,13 @@ def track_article_view(request: HttpRequest, data: ArticleViewRequest) -> dict[s
 @router.post("/track/search")
 def track_search_query(request: HttpRequest, data: SearchQueryRequest) -> dict[str, str | bool]:
     """Track a search query."""
+    if parse_user_agent(request.META.get("HTTP_USER_AGENT", ""))["device_type"] == "bot":
+        return {"success": True, "id": ""}
+
     user = request.user if request.user.is_authenticated else None
 
     search_query = SearchQuery.objects.create(
-        query=data.query,
+        query=data.query.strip(),
         results_count=data.results_count,
         user=user,
         session_id=data.session_id,
@@ -163,12 +216,14 @@ def track_search_click(request: HttpRequest, data: SearchClickRequest) -> dict[s
     try:
         search_query = SearchQuery.objects.get(id=data.search_id)
         article = Article.objects.get(id=data.article_id)
-    except (SearchQuery.DoesNotExist, Article.DoesNotExist):
+    except (SearchQuery.DoesNotExist, Article.DoesNotExist, ValueError, ValidationError):
         raise HttpError(404, "Search query or article not found")
 
-    search_query.clicked_result = article
-    search_query.clicked_position = data.position
-    search_query.save(update_fields=["clicked_result", "clicked_position"])
+    # Keep the first click: it is the result the query actually led to.
+    if search_query.clicked_result_id is None:
+        search_query.clicked_result = article
+        search_query.clicked_position = data.position
+        search_query.save(update_fields=["clicked_result", "clicked_position"])
 
     return {"success": True}
 
@@ -203,6 +258,13 @@ def track_event(request: HttpRequest, data: EventRequest) -> dict[str, str | boo
 # Admin dashboard endpoints (requires admin role)
 # =============================================================================
 
+PERIODS: dict[str, tuple[timedelta, str]] = {
+    "24h": (timedelta(hours=24), "hour"),
+    "7d": (timedelta(days=7), "day"),
+    "30d": (timedelta(days=30), "day"),
+    "90d": (timedelta(days=90), "day"),
+}
+
 
 def require_admin(request: HttpRequest) -> None:
     """Check if user is admin."""
@@ -212,205 +274,215 @@ def require_admin(request: HttpRequest) -> None:
         raise HttpError(403, "Admin access required")
 
 
-@router.get("/dashboard", response=AnalyticsDashboardResponse)
-def get_analytics_dashboard(
-    request: HttpRequest,
-    period: str = "week",  # "today", "week", "month"
-) -> AnalyticsDashboardResponse:
-    """Get comprehensive analytics dashboard data."""
-    require_admin(request)
+def _human_page_views() -> QuerySet[PageView]:
+    return PageView.objects.exclude(device_type="bot")
 
-    # Calculate date range
-    today = timezone.now().date()
-    if period == "today":
-        start_date = today
-        prev_start = today - timedelta(days=1)
-        prev_end = today - timedelta(days=1)
-    elif period == "week":
-        start_date = today - timedelta(days=7)
-        prev_start = today - timedelta(days=14)
-        prev_end = today - timedelta(days=8)
-    else:  # month
-        start_date = today - timedelta(days=30)
-        prev_start = today - timedelta(days=60)
-        prev_end = today - timedelta(days=31)
 
-    # Get current period stats
-    current_views = PageView.objects.filter(created_at__date__gte=start_date)
-    current_article_views = ArticleView.objects.filter(created_at__date__gte=start_date)
-    current_searches = SearchQuery.objects.filter(created_at__date__gte=start_date)
+def _change(current: int, previous: int) -> float | None:
+    """Percentage change, or None when there is nothing to compare against."""
+    if previous == 0:
+        return None
+    return round((current - previous) / previous * 100, 1)
 
-    total_page_views = current_views.count()
-    unique_visitors = current_views.values("session_id").distinct().count()
-    total_article_views = current_article_views.count()
-    total_searches = current_searches.count()
-    avg_time = current_article_views.aggregate(avg=Avg("time_on_article"))["avg"]
 
-    # Get previous period stats for comparison
-    prev_views = PageView.objects.filter(
-        created_at__date__gte=prev_start,
-        created_at__date__lte=prev_end,
+def _host(url: str | None) -> str:
+    if not url:
+        return ""
+    host = (urlparse(url).hostname or "").lower()
+    return host.removeprefix("www.")
+
+
+def _bucket_starts(start: datetime, end: datetime, bucket: str) -> list[datetime]:
+    """Every bucket boundary between start and end, in the current timezone."""
+    current = timezone.localtime(start)
+    if bucket == "hour":
+        current = current.replace(minute=0, second=0, microsecond=0)
+        step = timedelta(hours=1)
+    else:
+        current = current.replace(hour=0, minute=0, second=0, microsecond=0)
+        step = timedelta(days=1)
+    buckets = []
+    while current <= end:
+        buckets.append(current)
+        current += step
+    return buckets
+
+
+def _series(
+    page_views: QuerySet[PageView], start: datetime, end: datetime, bucket: str
+) -> list[dict[str, Any]]:
+    rows = (
+        page_views.annotate(bucket=Trunc("created_at", bucket))
+        .values("bucket")
+        .annotate(views=Count("id"), visitors=Count("session_id", distinct=True))
     )
-    prev_article_views = ArticleView.objects.filter(
-        created_at__date__gte=prev_start,
-        created_at__date__lte=prev_end,
-    )
-    prev_searches = SearchQuery.objects.filter(
-        created_at__date__gte=prev_start,
-        created_at__date__lte=prev_end,
-    )
-
-    prev_page_views = prev_views.count()
-    prev_visitors = prev_views.values("session_id").distinct().count()
-    prev_total_article = prev_article_views.count()
-    prev_total_searches = prev_searches.count()
-
-    # Calculate percentage changes
-    def calc_change(current: int, previous: int) -> float:
-        if previous == 0:
-            return 100.0 if current > 0 else 0.0
-        return ((current - previous) / previous) * 100
-
-    summary = AnalyticsSummaryResponse(
-        period=period,
-        total_page_views=total_page_views,
-        unique_visitors=unique_visitors,
-        total_article_views=total_article_views,
-        total_searches=total_searches,
-        avg_time_on_article=avg_time,
-        bounce_rate=None,  # Would need more complex calculation
-        page_views_change=calc_change(total_page_views, prev_page_views),
-        visitors_change=calc_change(unique_visitors, prev_visitors),
-        article_views_change=calc_change(total_article_views, prev_total_article),
-        searches_change=calc_change(total_searches, prev_total_searches),
-    )
-
-    # Get daily stats
-    daily_stats_qs = DailyStats.objects.filter(date__gte=start_date).order_by("-date")
-    daily_stats = [
-        DailyStatsResponse(
-            date=stat.date,
-            total_page_views=stat.total_page_views,
-            unique_visitors=stat.unique_visitors,
-            total_article_views=stat.total_article_views,
-            unique_articles_viewed=stat.unique_articles_viewed,
-            avg_time_on_article=stat.avg_time_on_article,
-            total_searches=stat.total_searches,
-            searches_with_results=stat.searches_with_results,
-            searches_with_clicks=stat.searches_with_clicks,
-            new_users=stat.new_users,
-            returning_users=stat.returning_users,
-            logged_in_users=stat.logged_in_users,
-            desktop_views=stat.desktop_views,
-            mobile_views=stat.mobile_views,
-            tablet_views=stat.tablet_views,
-            articles_created=stat.articles_created,
-            articles_published=stat.articles_published,
-            articles_updated=stat.articles_updated,
-            total_events=stat.total_events,
-            copy_link_clicks=stat.copy_link_clicks,
-            edit_button_clicks=stat.edit_button_clicks,
-        )
-        for stat in daily_stats_qs
+    by_bucket = {timezone.localtime(row["bucket"]): row for row in rows}
+    return [
+        {
+            "t": moment.isoformat(),
+            "page_views": by_bucket.get(moment, {}).get("views", 0),
+            "visitors": by_bucket.get(moment, {}).get("visitors", 0),
+        }
+        for moment in _bucket_starts(start, end, bucket)
     ]
 
-    # Get top articles
-    top_articles_qs = (
-        current_article_views.values("article")
-        .annotate(
-            view_count=Count("id"),
-            unique_visitors=Count("session_id", distinct=True),
-        )
-        .order_by("-view_count")[:10]
-    )
 
-    top_articles = []
-    for i, item in enumerate(top_articles_qs, 1):
-        try:
-            article = Article.objects.get(id=item["article"])
-            top_articles.append(
-                TopArticleResponse(
-                    rank=i,
-                    article_id=str(article.id),
-                    article_title=article.title,
-                    article_slug=article.slug,
-                    category_name=article.category.name if article.category else None,
-                    view_count=item["view_count"],
-                    unique_visitors=item["unique_visitors"],
-                )
-            )
-        except Article.DoesNotExist:
+def _breakdown(page_views: QuerySet[PageView], field: str) -> list[dict[str, Any]]:
+    rows = page_views.values(field).annotate(views=Count("id")).order_by("-views")[:8]
+    return [{"name": row[field] or "Unknown", "views": row["views"]} for row in rows]
+
+
+def _referrers(page_views: QuerySet[PageView]) -> list[dict[str, Any]]:
+    """Group external referrers by site; own-site and empty referrers count as direct."""
+    rows = (
+        page_views.values("referrer", "full_url")
+        .annotate(views=Count("id"))
+        .order_by("-views")[:2000]
+    )
+    sources: Counter[str] = Counter()
+    for row in rows:
+        source = _host(row["referrer"])
+        if not source or source == _host(row["full_url"]):
+            source = "Direct or internal"
+        sources[source] += row["views"]
+    return [{"source": source, "views": views} for source, views in sources.most_common(10)]
+
+
+def _top_articles(article_views: QuerySet[ArticleView]) -> list[dict[str, Any]]:
+    rows = list(
+        article_views.values("article")
+        .annotate(
+            views=Count("id"),
+            visitors=Count("session_id", distinct=True),
+            avg_seconds=Avg("time_on_article"),
+            avg_scroll=Avg("scroll_depth"),
+        )
+        .order_by("-views")[:10]
+    )
+    articles = Article.objects.select_related("category").in_bulk([row["article"] for row in rows])
+    results = []
+    for row in rows:
+        article = articles.get(row["article"])
+        if article is None:
             continue
+        results.append(
+            {
+                "article_id": str(article.id),
+                "title": article.title,
+                "url": article.full_url,
+                "category": article.category.name if article.category else None,
+                "views": row["views"],
+                "visitors": row["visitors"],
+                "avg_seconds": round(row["avg_seconds"]) if row["avg_seconds"] else None,
+                "avg_scroll": round(row["avg_scroll"]) if row["avg_scroll"] else None,
+            }
+        )
+    return results
 
-    # Get top searches
-    top_searches_qs = (
-        current_searches.values("query")
+
+def _search_report(searches: QuerySet[SearchQuery]) -> dict[str, Any]:
+    normalised = searches.annotate(term=Lower("query"))
+    top = (
+        normalised.values("term")
         .annotate(
-            search_count=Count("id"),
+            count=Count("id"),
             clicks=Count("clicked_result"),
+            avg_results=Avg("results_count"),
         )
-        .order_by("-search_count")[:10]
+        .order_by("-count")[:10]
     )
-
-    top_searches = [
-        TopSearchQueryResponse(
-            rank=i,
-            query=item["query"],
-            search_count=item["search_count"],
-            click_through_rate=(
-                (item["clicks"] / item["search_count"]) * 100 if item["search_count"] > 0 else None
-            ),
-        )
-        for i, item in enumerate(top_searches_qs, 1)
-    ]
-
-    # Get traffic sources (from referrer)
-    referrer_stats = (
-        current_views.exclude(referrer__isnull=True)
-        .exclude(referrer="")
-        .values("referrer")
+    zero = (
+        normalised.filter(results_count=0)
+        .values("term")
         .annotate(count=Count("id"))
         .order_by("-count")[:10]
     )
+    return {
+        "top": [
+            {
+                "query": row["term"],
+                "count": row["count"],
+                "click_rate": round(row["clicks"] / row["count"] * 100, 1),
+                "avg_results": round(row["avg_results"] or 0),
+            }
+            for row in top
+        ],
+        "zero_results": [{"query": row["term"], "count": row["count"]} for row in zero],
+    }
 
-    total_with_referrer = sum(r["count"] for r in referrer_stats)
-    traffic_sources = [
-        TrafficSourceResponse(
-            source=(item["referrer"] or "")[:100],
-            count=item["count"],
-            percentage=(item["count"] / total_with_referrer * 100)
-            if total_with_referrer > 0
-            else 0,
-        )
-        for item in referrer_stats
-    ]
 
-    # Get device breakdown
-    device_counts = current_views.values("device_type").annotate(count=Count("id"))
-    device_dict = {d["device_type"]: d["count"] for d in device_counts}
+def _totals(start: datetime, end: datetime) -> dict[str, int]:
+    page_views = _human_page_views().filter(created_at__gte=start, created_at__lt=end)
+    return {
+        "page_views": page_views.count(),
+        "visitors": page_views.values("session_id").distinct().count(),
+        "article_views": ArticleView.objects.filter(
+            created_at__gte=start, created_at__lt=end
+        ).count(),
+        "searches": SearchQuery.objects.filter(created_at__gte=start, created_at__lt=end).count(),
+    }
 
-    desktop = device_dict.get("desktop", 0)
-    mobile = device_dict.get("mobile", 0)
-    tablet = device_dict.get("tablet", 0)
-    total_devices = desktop + mobile + tablet or 1
 
-    device_breakdown = DeviceBreakdownResponse(
-        desktop=desktop,
-        mobile=mobile,
-        tablet=tablet,
-        desktop_percentage=(desktop / total_devices) * 100,
-        mobile_percentage=(mobile / total_devices) * 100,
-        tablet_percentage=(tablet / total_devices) * 100,
+@router.get("/dashboard")
+def get_analytics_dashboard(request: HttpRequest, period: str = "7d") -> dict[str, Any]:
+    """Traffic, content and search report for one period, compared with the one before."""
+    require_admin(request)
+    if period not in PERIODS:
+        raise HttpError(400, "Invalid period")
+    length, bucket = PERIODS[period]
+
+    end = timezone.now()
+    start = end - length
+    page_views = _human_page_views().filter(created_at__gte=start)
+    article_views = ArticleView.objects.filter(created_at__gte=start)
+    searches = SearchQuery.objects.filter(created_at__gte=start)
+
+    current = _totals(start, end + timedelta(seconds=1))
+    previous = _totals(start - length, start)
+    engagement = article_views.aggregate(
+        avg_seconds=Avg("time_on_article"), avg_scroll=Avg("scroll_depth")
+    )
+    search_counts = searches.aggregate(
+        clicked=Count("id", filter=Q(clicked_result__isnull=False)),
+        zero=Count("id", filter=Q(results_count=0)),
     )
 
-    return AnalyticsDashboardResponse(
-        summary=summary,
-        daily_stats=daily_stats,
-        top_articles=top_articles,
-        top_searches=top_searches,
-        traffic_sources=traffic_sources,
-        device_breakdown=device_breakdown,
-    )
+    return {
+        "success": True,
+        "period": period,
+        "bucket": bucket,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "summary": {
+            **current,
+            "changes": {key: _change(current[key], previous[key]) for key in current},
+            "avg_read_seconds": (
+                round(engagement["avg_seconds"]) if engagement["avg_seconds"] else None
+            ),
+            "avg_scroll_depth": (
+                round(engagement["avg_scroll"]) if engagement["avg_scroll"] else None
+            ),
+            "search_click_rate": (
+                round(search_counts["clicked"] / current["searches"] * 100, 1)
+                if current["searches"]
+                else None
+            ),
+            "zero_result_searches": search_counts["zero"],
+        },
+        "series": _series(page_views, start, end, bucket),
+        "top_pages": [
+            {"path": row["path"], "views": row["views"], "visitors": row["visitors"]}
+            for row in page_views.values("path")
+            .annotate(views=Count("id"), visitors=Count("session_id", distinct=True))
+            .order_by("-views")[:10]
+        ],
+        "top_articles": _top_articles(article_views),
+        "referrers": _referrers(page_views),
+        "devices": _breakdown(page_views, "device_type"),
+        "browsers": _breakdown(page_views, "browser"),
+        "operating_systems": _breakdown(page_views, "os"),
+        "searches": _search_report(searches),
+    }
 
 
 @router.get("/realtime")
@@ -421,20 +493,11 @@ def get_realtime_analytics(
     require_admin(request)
 
     thirty_mins_ago = timezone.now() - timedelta(minutes=30)
+    recent = _human_page_views().filter(created_at__gte=thirty_mins_ago)
 
-    active_sessions = (
-        PageView.objects.filter(created_at__gte=thirty_mins_ago)
-        .values("session_id")
-        .distinct()
-        .count()
-    )
+    active_sessions = recent.values("session_id").distinct().count()
 
-    recent_views = (
-        PageView.objects.filter(created_at__gte=thirty_mins_ago)
-        .values("path")
-        .annotate(count=Count("id"))
-        .order_by("-count")[:5]
-    )
+    recent_views = recent.values("path").annotate(count=Count("id")).order_by("-count")[:5]
 
     return {
         "success": True,
