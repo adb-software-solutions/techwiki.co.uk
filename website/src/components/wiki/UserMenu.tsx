@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/lib/auth";
 import Image from "next/image";
-import Link from "next/link";
+import { SiteLink as Link } from "@/components/wiki/SiteLink";
 import { useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";

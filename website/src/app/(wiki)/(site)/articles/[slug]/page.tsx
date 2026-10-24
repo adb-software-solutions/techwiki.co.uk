@@ -16,7 +16,7 @@ import {
 import { Globe } from "lucide-react";
 import { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
+import { SiteLink as Link } from "@/components/wiki/SiteLink";
 import { notFound } from "next/navigation";
 import { FaLinkedin } from "react-icons/fa";
 

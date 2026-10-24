@@ -14,6 +14,7 @@ import {
     useTransition,
 } from "react";
 import { ArticleCard } from "./ArticleCard";
+import { navigateToSite } from "@/components/wiki/SiteLink";
 
 interface SearchBoxProps {
     categories?: Category[];
@@ -42,7 +43,10 @@ function SearchBoxInner({ className = "", initialQuery }: SearchBoxProps) {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (query.trim()) {
-            router.push(`/search?q=${encodeURIComponent(query.trim())}`);
+            navigateToSite(
+                `/search?q=${encodeURIComponent(query.trim())}`,
+                router.push,
+            );
         }
     };
 
@@ -159,7 +163,7 @@ export function SearchResults({ categories }: SearchResultsProps) {
             params.delete("page");
         }
 
-        router.push(`/search?${params.toString()}`);
+        navigateToSite(`/search?${params.toString()}`, router.push);
     };
 
     return (

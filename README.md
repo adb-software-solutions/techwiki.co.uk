@@ -145,6 +145,13 @@ NEXT_PUBLIC_ADSENSE_CLIENT_ID=ca-pub-0000000000000000
 The AdSense client ID enables its script, account metadata, and the local
 `/ads.txt` seller entry. Rebuild the website image after changing these values.
 
+AdSense loads only on public pages; the dashboard, editor and moderation pages
+never load it. Auto ads initialise once per document, so when AdSense is
+configured, public links (`SiteLink`) use normal document navigation and each
+page gets fresh ads. Without AdSense they keep Next.js client navigation. Links
+between the public site and the admin area always load a new document so the
+ad script is added or dropped.
+
 The privacy policy is available at `/privacy` and is linked from website and
 account-page footers. Review privacy and consent settings before enabling
 analytics or advertising.

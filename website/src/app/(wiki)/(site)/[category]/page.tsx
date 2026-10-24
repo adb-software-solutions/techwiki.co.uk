@@ -2,7 +2,7 @@ import { ArticleCard } from "@/components/wiki/ArticleCard";
 import { getArticles, getCategory } from "@/lib/wiki/api";
 import type { ArticleSummary, Category } from "@/lib/wiki/types";
 import type { Metadata } from "next";
-import Link from "next/link";
+import { SiteLink as Link } from "@/components/wiki/SiteLink";
 import { notFound } from "next/navigation";
 
 const BASE_URL = "https://techwiki.co.uk";
@@ -163,8 +163,8 @@ export default async function CategoryPage({
                             {category.name} topic guide
                         </h2>
                         <p className="mt-2 text-gray-400">
-                            Start with the key guides, then use the references and
-                            troubleshooting material below as you need them.
+                            Start with the key guides, then use the references
+                            and troubleshooting material below as you need them.
                         </p>
                     </div>
                     <TopicSection

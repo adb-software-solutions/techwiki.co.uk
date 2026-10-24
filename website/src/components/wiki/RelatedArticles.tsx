@@ -1,16 +1,14 @@
 import type { ArticleSummary } from "@/lib/wiki/types";
-import Link from "next/link";
+import { SiteLink as Link } from "@/components/wiki/SiteLink";
 
-export function RelatedArticles({
-    articles,
-}: {
-    articles: ArticleSummary[];
-}) {
+export function RelatedArticles({ articles }: { articles: ArticleSummary[] }) {
     if (articles.length === 0) return null;
 
     return (
         <aside className="mx-auto mt-10 max-w-4xl border-t border-gray-700 pt-8">
-            <h2 className="text-xl font-semibold text-white">Related articles</h2>
+            <h2 className="text-xl font-semibold text-white">
+                Related articles
+            </h2>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {articles.map((article) => {
                     const category =

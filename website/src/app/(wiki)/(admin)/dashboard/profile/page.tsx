@@ -254,10 +254,12 @@ export default function ProfilePage() {
     }
 
     return (
-        <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6">
+        <div className="space-y-6">
             {/* Header */}
             <div>
-                <h1 className="text-3xl font-bold text-white">Edit Profile</h1>
+                <h1 className="text-2xl font-semibold text-white">
+                    Edit Profile
+                </h1>
                 <p className="mt-1 text-gray-400">
                     Update your public profile information
                 </p>

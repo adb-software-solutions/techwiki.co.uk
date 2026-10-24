@@ -1,7 +1,7 @@
 import { ArticleCard } from "@/components/wiki/ArticleCard";
 import { getArticles } from "@/lib/wiki/api";
 import { Metadata } from "next";
-import Link from "next/link";
+import { SiteLink as Link } from "@/components/wiki/SiteLink";
 
 export const metadata: Metadata = {
     title: "Blog | TechWiki",

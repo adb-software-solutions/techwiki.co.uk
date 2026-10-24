@@ -1,7 +1,7 @@
 "use client";
 
 import { canEditArticle, useAuth } from "@/lib/auth";
-import Link from "next/link";
+import { SiteLink as Link } from "@/components/wiki/SiteLink";
 
 interface ArticleActionsProps {
     articleId: string;

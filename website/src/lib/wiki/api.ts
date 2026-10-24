@@ -186,23 +186,20 @@ export async function getMyArticles(params?: {
         searchParams.set("per_page", params.per_page.toString());
 
     const query = searchParams.toString();
-    return fetchApi(`/api/wiki/my-articles${query ? `?${query}` : ""}`);
+    return fetchApi(`/api/wiki/me/articles${query ? `?${query}` : ""}`);
 }
 
 // Moderation endpoints
-export async function getPendingArticles(): Promise<{
-    success: boolean;
-    articles: import("./types").ArticleSummary[];
-    total: number;
-}> {
-    return fetchApi("/api/wiki/moderation/pending");
-}
-
 export async function moderateArticle(
     articleId: string,
-    action: "approve" | "reject" | "request_changes" | "publish",
+    action: import("./types").WorkflowAction | "approve",
     notes?: string,
-): Promise<{ success: boolean; message: string; new_status: string }> {
+): Promise<{
+    success: boolean;
+    message: string;
+    new_status: string;
+    next_article_id: string | null;
+}> {
     return fetchApi(`/api/wiki/moderation/${articleId}`, {
         method: "POST",
         body: JSON.stringify({ action, notes }),
