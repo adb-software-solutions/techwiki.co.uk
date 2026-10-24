@@ -296,7 +296,7 @@ export default function AdminDashboardPage() {
                     <p className="text-sm font-medium text-blue-400">
                         Administration
                     </p>
-                    <h1 className="mt-1 text-3xl font-bold text-white">
+                    <h1 className="mt-1 text-2xl font-semibold text-white">
                         Admin dashboard
                     </h1>
                     <p className="mt-2 text-gray-400">

@@ -65,6 +65,8 @@ export interface ArticleSummary {
     category: Category | null;
     author: Author | null;
     status: ArticleStatus;
+    source?: "web" | "authoring";
+    moderation_notes?: string;
     published_at: string | null;
     created_at: string;
     updated_at: string;
@@ -180,4 +182,57 @@ export interface SitemapResponse {
     success: boolean;
     articles: SitemapItem[];
     categories: SitemapItem[];
+}
+
+// Status workflow and moderation
+export type WorkflowAction =
+    | "submit"
+    | "withdraw"
+    | "publish"
+    | "request_changes"
+    | "reject"
+    | "unpublish"
+    | "archive"
+    | "restore";
+
+export type QueueTab =
+    "pending" | "changes_requested" | "automation" | "decided";
+
+export interface ModerationLogEntry {
+    id: string;
+    action: WorkflowAction;
+    old_status: ArticleStatus;
+    new_status: ArticleStatus;
+    notes: string;
+    created_at: string;
+    actor: { id: string; name: string } | null;
+}
+
+export interface QueueArticle extends ArticleSummary {
+    waiting_since: string;
+}
+
+export interface DecidedQueueItem extends ModerationLogEntry {
+    article: ArticleSummary;
+}
+
+export interface ModerationQueueResponse {
+    success: boolean;
+    message?: string;
+    tab: QueueTab;
+    items: (QueueArticle | DecidedQueueItem)[];
+    counts: Record<QueueTab, number>;
+    total: number;
+    page: number;
+    per_page: number;
+}
+
+export interface ModerationArticleResponse {
+    success: boolean;
+    message?: string;
+    article: Article;
+    history: ModerationLogEntry[];
+    revision_count: number;
+    actions: WorkflowAction[];
+    queue: { tab: QueueTab | null; position: number | null; total: number };
 }

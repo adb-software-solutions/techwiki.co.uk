@@ -1,6 +1,6 @@
 import { getCategories } from "@/lib/wiki/api";
 import { Metadata } from "next";
-import Link from "next/link";
+import { SiteLink as Link } from "@/components/wiki/SiteLink";
 
 export const metadata: Metadata = {
     title: "Categories | TechWiki",

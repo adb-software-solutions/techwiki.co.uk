@@ -2,7 +2,7 @@
 
 import type { ArticleSummary } from "@/lib/wiki/types";
 import Image from "next/image";
-import Link from "next/link";
+import { SiteLink as Link } from "@/components/wiki/SiteLink";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 

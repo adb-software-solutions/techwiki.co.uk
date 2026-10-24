@@ -311,7 +311,7 @@ export default function AnalyticsDashboardPage() {
     return (
         <div>
             <div className="mb-8 flex items-center justify-between">
-                <h1 className="text-3xl font-bold text-white">
+                <h1 className="text-2xl font-semibold text-white">
                     Analytics Dashboard
                 </h1>
                 <div className="flex items-center gap-2">

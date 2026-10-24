@@ -1,14 +1,14 @@
 import { SearchBox } from "@/components/wiki/SearchBox";
 import { UserMenu } from "@/components/wiki/UserMenu";
-import { AuthProvider } from "@/lib/auth/AuthContext";
+import { SiteLink as Link } from "@/components/wiki/SiteLink";
+import { GoogleAdSenseScript } from "@/lib/analytics/AdSense";
 import { getCategories } from "@/lib/wiki/api";
-import Link from "next/link";
 
 interface WikiLayoutProps {
     children: React.ReactNode;
 }
 
-export default async function WikiLayout({ children }: WikiLayoutProps) {
+export default async function SiteLayout({ children }: WikiLayoutProps) {
     const categoriesResponse = await getCategories().catch(() => ({
         success: false,
         categories: [],
@@ -18,7 +18,9 @@ export default async function WikiLayout({ children }: WikiLayoutProps) {
         : [];
 
     return (
-        <AuthProvider>
+        <>
+            {/* Admin pages never load AdSense; see SiteLink. */}
+            <GoogleAdSenseScript />
             <div className="min-h-screen bg-[#1c324a]">
                 {/* Navigation */}
                 <nav className="sticky top-0 z-50 border-b border-gray-700/50 bg-[#1c324a]/95 backdrop-blur">
@@ -143,6 +145,6 @@ export default async function WikiLayout({ children }: WikiLayoutProps) {
                     </div>
                 </footer>
             </div>
-        </AuthProvider>
+        </>
     );
 }
