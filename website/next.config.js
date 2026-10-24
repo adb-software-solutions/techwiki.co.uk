@@ -13,6 +13,9 @@ const nextConfig = {
         root: workspaceRoot,
     },
     images: {
+        // Next.js refuses to optimise images from private addresses, which
+        // includes the API's media on localhost during development.
+        dangerouslyAllowLocalIP: process.env.NODE_ENV === "development",
         remotePatterns: [
             {
                 protocol: "https",
