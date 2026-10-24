@@ -3,13 +3,15 @@
 import contextlib
 import logging
 import re
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
 import markdown
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import DateTimeField, F, Max, Q, QuerySet
+from django.db.models.functions import Coalesce
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.text import slugify
@@ -20,6 +22,7 @@ from apps.wiki.models import (
     Article,
     ArticleImage,
     ArticleRevision,
+    ArticleSource,
     ArticleStatus,
     Category,
     ModerationLog,
@@ -33,6 +36,14 @@ from apps.wiki.schemas import (
     ModerationActionRequest,
     RedirectCreateRequest,
     TagCreateRequest,
+)
+from apps.wiki.workflow import (
+    MODERATION_DECISIONS,
+    WorkflowError,
+    apply_transition,
+    available_actions,
+    check_transition,
+    is_moderator,
 )
 from authentication.models import User
 
@@ -146,6 +157,8 @@ def article_to_summary(article: Article) -> dict[str, Any]:
         "categories": categories_data,
         "author": author_data,
         "status": article.status,
+        "source": article.source,
+        "moderation_notes": article.moderation_notes,
         "published_at": article.published_at,
         "created_at": article.created_at,
         "updated_at": article.updated_at,
@@ -535,13 +548,15 @@ def get_article(request: HttpRequest, article_id: str) -> tuple[int, dict[str, A
         if article.status != ArticleStatus.PUBLISHED:
             if not request.user.is_authenticated:
                 return 200, {"success": False, "message": "Article not found"}
-            profile = get_user_profile(request.user)
-            if article.author != request.user and not (profile and profile.can_moderate):
+            if article.author != request.user and not is_moderator(request.user):
                 return 200, {"success": False, "message": "Article not found"}
 
         return 200, {
             "success": True,
             "article": article_to_response(article),
+            "actions": (
+                available_actions(article, request.user) if request.user.is_authenticated else []
+            ),
         }
     except Article.DoesNotExist:
         return 200, {"success": False, "message": "Article not found"}
@@ -555,12 +570,13 @@ def create_article(request: HttpRequest, data: ArticleCreateRequest) -> tuple[in
 
     try:
         profile = get_user_profile(request.user)
-
-        # Determine initial status
-        if profile and profile.can_publish_directly:
-            status = ArticleStatus.PUBLISHED
-        else:
-            status = ArticleStatus.PENDING_REVIEW
+        if data.status not in {
+            None,
+            ArticleStatus.DRAFT,
+            ArticleStatus.PENDING_REVIEW,
+            ArticleStatus.PUBLISHED,
+        }:
+            return 200, {"success": False, "message": "Invalid status"}
 
         slug = data.slug or slugify(data.title)
 
@@ -588,11 +604,10 @@ def create_article(request: HttpRequest, data: ArticleCreateRequest) -> tuple[in
                 article_type=data.article_type,
                 category=category,
                 author=request.user,
-                status=status,
+                status=ArticleStatus.DRAFT,
                 meta_title=data.meta_title or data.title[:60],
                 meta_description=data.meta_description or data.excerpt[:160],
                 allow_comments=data.allow_comments,
-                published_at=timezone.now() if status == ArticleStatus.PUBLISHED else None,
             )
 
             # Set all categories
@@ -617,24 +632,54 @@ def create_article(request: HttpRequest, data: ArticleCreateRequest) -> tuple[in
                 change_summary="Initial version",
             )
 
+            if data.status != ArticleStatus.DRAFT:
+                wants_publish = data.status in {None, ArticleStatus.PUBLISHED}
+                try:
+                    check_transition(article, "publish", request.user)
+                except WorkflowError:
+                    if data.status == ArticleStatus.PUBLISHED:
+                        raise
+                    wants_publish = False
+                apply_transition(article, "publish" if wants_publish else "submit", request.user)
+
             # Update author's article count
             if profile:
                 profile.articles_count = Article.objects.filter(author=request.user).count()
                 profile.save(update_fields=["articles_count"])
 
+        created_messages: dict[str, str] = {
+            ArticleStatus.PUBLISHED: "Article published",
+            ArticleStatus.PENDING_REVIEW: "Article submitted for review",
+        }
         return 200, {
             "success": True,
             "article": article_to_response(article),
-            "message": "Article created"
-            + (
-                " and published"
-                if status == ArticleStatus.PUBLISHED
-                else " and submitted for review"
-            ),
+            "message": created_messages.get(article.status, "Draft saved"),
         }
+    except WorkflowError as e:
+        return 200, {"success": False, "message": str(e)}
     except Exception as e:
         logger.error("Error creating article: %s", e)
         return 200, {"success": False, "message": "Failed to create article"}
+
+
+# (current status, status the editor asked for) -> workflow action
+EDITOR_STATUS_ACTIONS: dict[tuple[str, str], str] = {
+    **{
+        (status, ArticleStatus.PUBLISHED): "publish"
+        for status in (
+            ArticleStatus.DRAFT,
+            ArticleStatus.PENDING_REVIEW,
+            ArticleStatus.CHANGES_REQUESTED,
+            ArticleStatus.APPROVED,
+        )
+    },
+    (ArticleStatus.DRAFT, ArticleStatus.PENDING_REVIEW): "submit",
+    (ArticleStatus.CHANGES_REQUESTED, ArticleStatus.PENDING_REVIEW): "submit",
+    (ArticleStatus.PENDING_REVIEW, ArticleStatus.DRAFT): "withdraw",
+    (ArticleStatus.PUBLISHED, ArticleStatus.DRAFT): "unpublish",
+    (ArticleStatus.ARCHIVED, ArticleStatus.DRAFT): "restore",
+}
 
 
 @wiki_router.put("/articles/{article_id}", response={200: dict})
@@ -649,23 +694,19 @@ def update_article(
         article = Article.objects.get(id=article_id)
 
         # Check permissions
-        profile = get_user_profile(request.user)
-        if article.author != request.user and not (profile and profile.can_moderate):
+        if article.author != request.user and not is_moderator(request.user):
             return 200, {"success": False, "message": "Permission denied"}
 
-        # The edit page can save as a draft, submit for review, or publish. Other
-        # statuses belong to the moderation workflow.
-        new_status = data.status if data.status and data.status != article.status else None
-        if new_status == ArticleStatus.PUBLISHED:
-            can_publish = (
-                request.user.is_staff
-                or request.user.is_superuser
-                or (profile and profile.can_publish_directly)
-            )
-            if not can_publish:
-                return 200, {"success": False, "message": "Permission denied"}
-        elif new_status not in {None, ArticleStatus.DRAFT, ArticleStatus.PENDING_REVIEW}:
-            return 200, {"success": False, "message": "Invalid status"}
+        # The editor saves with the status it wants; map that to a workflow action.
+        action = None
+        if data.status and data.status != article.status:
+            action = EDITOR_STATUS_ACTIONS.get((article.status, data.status))
+            if action is None:
+                return 200, {"success": False, "message": "Invalid status"}
+            try:
+                check_transition(article, action, request.user)
+            except WorkflowError as e:
+                return 200, {"success": False, "message": str(e)}
 
         with transaction.atomic():
             # Update fields
@@ -688,10 +729,6 @@ def update_article(
                 article.meta_description = data.meta_description
             if data.allow_comments is not None:
                 article.allow_comments = data.allow_comments
-            if new_status:
-                article.status = new_status
-                if new_status == ArticleStatus.PUBLISHED and not article.published_at:
-                    article.published_at = timezone.now()
 
             article.version += 1
             article.save()
@@ -720,6 +757,9 @@ def update_article(
                 change_summary=data.change_summary or f"Update to version {article.version}",
             )
 
+            if action:
+                apply_transition(article, action, request.user)
+
         return 200, {
             "success": True,
             "article": article_to_response(article),
@@ -740,13 +780,13 @@ def delete_article(request: HttpRequest, article_id: str) -> tuple[int, dict[str
 
     try:
         article = Article.objects.get(id=article_id)
-
-        profile = get_user_profile(request.user)
-        if article.author != request.user and not (profile and profile.can_moderate):
+        if article.author != request.user and not is_moderator(request.user):
             return 200, {"success": False, "message": "Permission denied"}
 
-        article.status = ArticleStatus.ARCHIVED
-        article.save(update_fields=["status"])
+        try:
+            apply_transition(article, "archive", request.user)
+        except WorkflowError as e:
+            return 200, {"success": False, "message": str(e)}
 
         return 200, {"success": True, "message": "Article archived"}
     except Article.DoesNotExist:
@@ -940,26 +980,139 @@ def create_redirect(
 # ============================================================================
 
 
-@wiki_router.get("/moderation/pending", response={200: dict})
-def get_pending_articles(request: HttpRequest) -> tuple[int, dict[str, Any]]:
-    """Get articles pending moderation."""
-    if not request.user.is_authenticated:
-        return 200, {"success": False, "message": "Authentication required"}
+QUEUE_TABS = ("pending", "changes_requested", "automation", "decided")
+DECIDED_WINDOW = timedelta(days=30)
 
-    profile = get_user_profile(request.user)
-    if not profile or not profile.can_moderate:
+
+def _queue_articles(tab: str) -> QuerySet[Article]:
+    """Articles waiting in a queue tab, longest-waiting first."""
+    articles = Article.objects.select_related("category", "author", "featured_image")
+    if tab == "automation":
+        articles = articles.filter(source=ArticleSource.AUTHORING, status=ArticleStatus.DRAFT)
+    else:
+        articles = articles.filter(
+            status=(
+                ArticleStatus.PENDING_REVIEW
+                if tab == "pending"
+                else ArticleStatus.CHANGES_REQUESTED
+            )
+        )
+    return articles.annotate(
+        waiting_since=Coalesce(
+            Max(
+                "moderation_logs__created_at",
+                filter=Q(moderation_logs__new_status=F("status")),
+            ),
+            "created_at",
+            output_field=DateTimeField(),
+        )
+    ).order_by("waiting_since", "created_at")
+
+
+def _decided_logs() -> QuerySet[ModerationLog]:
+    return ModerationLog.objects.filter(
+        action__in=MODERATION_DECISIONS,
+        created_at__gte=timezone.now() - DECIDED_WINDOW,
+    ).select_related("article", "article__category", "moderator")
+
+
+def _log_to_dict(log: ModerationLog) -> dict[str, Any]:
+    actor = log.moderator
+    return {
+        "id": str(log.id),
+        "action": log.action,
+        "old_status": log.old_status,
+        "new_status": log.new_status,
+        "notes": log.notes,
+        "created_at": log.created_at,
+        "actor": (
+            {"id": str(actor.id), "name": actor.get_full_name() or "Unknown"} if actor else None
+        ),
+    }
+
+
+def _queue_tab_for(article: Article) -> str | None:
+    if article.status == ArticleStatus.PENDING_REVIEW:
+        return "pending"
+    if article.status == ArticleStatus.CHANGES_REQUESTED:
+        return "changes_requested"
+    if article.status == ArticleStatus.DRAFT and article.source == ArticleSource.AUTHORING:
+        return "automation"
+    return None
+
+
+@wiki_router.get("/moderation/queue", response={200: dict})
+def get_moderation_queue(
+    request: HttpRequest,
+    tab: str = "pending",
+    page: int = 1,
+    per_page: int = 20,
+) -> tuple[int, dict[str, Any]]:
+    """List one moderation queue tab, with counts for every tab."""
+    if not request.user.is_authenticated or not is_moderator(request.user):
         return 200, {"success": False, "message": "Permission denied"}
+    if tab not in QUEUE_TABS:
+        return 200, {"success": False, "message": "Invalid queue"}
+    page, per_page = clamp_pagination(page, per_page)
+    offset = (page - 1) * per_page
 
-    articles = (
-        Article.objects.filter(status=ArticleStatus.PENDING_REVIEW)
-        .select_related("category", "author")
-        .order_by("created_at")
-    )
+    counts = {name: _queue_articles(name).count() for name in QUEUE_TABS if name != "decided"}
+    counts["decided"] = _decided_logs().count()
+
+    if tab == "decided":
+        logs = _decided_logs()[offset : offset + per_page]
+        items = [{**_log_to_dict(log), "article": article_to_summary(log.article)} for log in logs]
+    else:
+        articles = _queue_articles(tab)[offset : offset + per_page]
+        items = [
+            {**article_to_summary(article), "waiting_since": article.waiting_since}  # type: ignore[attr-defined]
+            for article in articles
+        ]
 
     return 200, {
         "success": True,
-        "articles": [article_to_summary(a) for a in articles],
-        "total": articles.count(),
+        "tab": tab,
+        "items": items,
+        "counts": counts,
+        "total": counts[tab],
+        "page": page,
+        "per_page": per_page,
+    }
+
+
+@wiki_router.get("/moderation/articles/{article_id}", response={200: dict})
+def get_moderation_article(request: HttpRequest, article_id: str) -> tuple[int, dict[str, Any]]:
+    """Full article, its moderation history and the actions open to the reviewer."""
+    if not request.user.is_authenticated or not is_moderator(request.user):
+        return 200, {"success": False, "message": "Permission denied"}
+    try:
+        article = (
+            Article.objects.select_related("category", "author", "featured_image")
+            .prefetch_related("tags")
+            .get(id=article_id)
+        )
+    except (Article.DoesNotExist, ValueError):
+        return 200, {"success": False, "message": "Article not found"}
+
+    tab = _queue_tab_for(article)
+    position = None
+    if tab:
+        ids = list(_queue_articles(tab).values_list("id", flat=True))
+        position = ids.index(article.id) + 1 if article.id in ids else None
+
+    return 200, {
+        "success": True,
+        "article": article_to_response(article),
+        "history": [
+            _log_to_dict(log) for log in article.moderation_logs.select_related("moderator")
+        ],
+        "revision_count": article.revisions.count(),
+        "actions": available_actions(article, request.user),
+        "queue": {
+            "tab": tab,
+            "position": position,
+            "total": _queue_articles(tab).count() if tab else 0,
+        },
     }
 
 
@@ -967,100 +1120,33 @@ def get_pending_articles(request: HttpRequest) -> tuple[int, dict[str, Any]]:
 def moderate_article(
     request: HttpRequest, article_id: str, data: ModerationActionRequest
 ) -> tuple[int, dict[str, Any]]:
-    """Perform moderation action on an article."""
-    if not request.user.is_authenticated:
-        return 200, {"success": False, "message": "Authentication required"}
-
-    profile = get_user_profile(request.user)
-    if not profile or not profile.can_moderate:
+    """Apply a moderation decision and point at the next article in the same queue."""
+    if not request.user.is_authenticated or not is_moderator(request.user):
         return 200, {"success": False, "message": "Permission denied"}
 
     try:
         article = Article.objects.get(id=article_id)
-        old_status = article.status
-
-        action_map = {
-            "approve": ArticleStatus.APPROVED,
-            "reject": ArticleStatus.DRAFT,
-            "request_changes": ArticleStatus.CHANGES_REQUESTED,
-            "publish": ArticleStatus.PUBLISHED,
-        }
-
-        if data.action not in action_map:
-            return 200, {"success": False, "message": "Invalid action"}
-
-        new_status = action_map[data.action]
-
-        with transaction.atomic():
-            article.status = new_status
-            article.moderation_notes = data.notes
-            article.moderator = request.user
-            article.moderated_at = timezone.now()
-
-            if new_status == ArticleStatus.PUBLISHED and not article.published_at:
-                article.published_at = timezone.now()
-
-            article.save()
-
-            ModerationLog.objects.create(
-                article=article,
-                moderator=request.user,
-                action=data.action,
-                old_status=old_status,
-                new_status=new_status,
-                notes=data.notes,
-            )
-
-        return 200, {
-            "success": True,
-            "message": f"Article {data.action}d",
-            "new_status": new_status,
-        }
-    except Article.DoesNotExist:
+    except (Article.DoesNotExist, ValueError):
         return 200, {"success": False, "message": "Article not found"}
 
+    tab = _queue_tab_for(article)
+    try:
+        with transaction.atomic():
+            new_status = apply_transition(article, data.action, request.user, data.notes)
+    except WorkflowError as e:
+        return 200, {"success": False, "message": str(e)}
 
-# ============================================================================
-# User Articles Endpoints
-# ============================================================================
-
-
-@wiki_router.get("/my-articles", response={200: dict})
-def get_my_articles(
-    request: HttpRequest,
-    status: str | None = None,
-    page: int = 1,
-    per_page: int = 20,
-) -> tuple[int, dict[str, Any]]:
-    """Get current user's articles."""
-    page, per_page = clamp_pagination(page, per_page)
-    if not request.user.is_authenticated:
-        return 200, {"success": False, "message": "Authentication required"}
-
-    articles = Article.objects.filter(author=request.user).select_related(
-        "category", "featured_image"
-    )
-
-    if status:
-        articles = articles.filter(status=status)
-
-    total = articles.count()
-    total_pages = (total + per_page - 1) // per_page
-    offset = (page - 1) * per_page
-    articles = articles[offset : offset + per_page]
-
+    next_article = _queue_articles(tab).exclude(id=article.id).first() if tab else None
     return 200, {
         "success": True,
-        "articles": [article_to_summary(a) for a in articles],
-        "total": total,
-        "page": page,
-        "per_page": per_page,
-        "total_pages": total_pages,
+        "message": f"Article {ArticleStatus(new_status).label.lower()}",
+        "new_status": new_status,
+        "next_article_id": str(next_article.id) if next_article else None,
     }
 
 
 # ============================================================================
-# User Profile Endpoints
+# User Articles Endpoints
 # ============================================================================
 
 
@@ -1210,6 +1296,7 @@ def update_wiki_profile(  # noqa: PLR0917
 def get_current_user_articles(
     request: HttpRequest,
     status: str | None = None,
+    q: str | None = None,
     page: int = 1,
     per_page: int = 20,
 ) -> tuple[int, dict[str, Any]]:
@@ -1218,10 +1305,16 @@ def get_current_user_articles(
     if not request.user.is_authenticated:
         return 200, {"success": False, "articles": [], "total": 0}
 
-    queryset = Article.objects.filter(author=request.user)
+    queryset = (
+        Article.objects.filter(author=request.user)
+        .select_related("category", "featured_image")
+        .order_by("-updated_at")
+    )
 
     if status:
         queryset = queryset.filter(status=status)
+    if q:
+        queryset = queryset.filter(Q(title__icontains=q) | Q(excerpt__icontains=q))
 
     total = queryset.count()
     offset = (page - 1) * per_page
@@ -1231,6 +1324,9 @@ def get_current_user_articles(
         "success": True,
         "articles": [article_to_summary(a) for a in articles],
         "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page,
     }
 
 

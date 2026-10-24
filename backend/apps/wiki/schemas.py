@@ -95,7 +95,8 @@ class ArticleBase(Schema):
 
 
 class ArticleCreateRequest(ArticleBase):
-    pass
+    # "draft", "pending_review" or "published"; omitted publishes when allowed, else submits.
+    status: str | None = None
 
 
 class ArticleUpdateRequest(Schema):
@@ -227,7 +228,7 @@ class SearchResponse(Schema):
 
 
 class ModerationActionRequest(Schema):
-    action: str  # approve, reject, request_changes, publish
+    action: str  # publish, request_changes, reject, unpublish (approve is an alias of publish)
     notes: str = ""
 
 
