@@ -3,7 +3,11 @@
     "tasks": [
         {
             "label": "Start Full Stack",
-            "dependsOn": ["Start Backend", "Start Website"],
+            "dependsOn": [
+                "Start Backend",
+                "Start Website",
+                "Start Auth Frontend"
+            ],
             "dependsOrder": "parallel",
             "group": "build"
         },
@@ -88,7 +92,7 @@
             }
         },
         {
-            "label": "Start Website (Next.js)",
+            "label": "Start Website",
             "type": "shell",
             "command": "start-website",
             "group": "build",
