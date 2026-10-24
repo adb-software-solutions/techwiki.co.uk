@@ -525,8 +525,8 @@ def get_article_by_path(request: HttpRequest, path: str) -> tuple[int, dict[str,
         except Article.DoesNotExist:
             return 200, {"success": False, "message": "Article not found"}
 
-    # Increment view count
-    Article.objects.filter(id=article.id).update(view_count=article.view_count + 1)
+    # Views are counted by the analytics tracker in the browser, not here: this
+    # endpoint is also called for metadata, prerendering and by crawlers.
 
     return 200, {
         "success": True,

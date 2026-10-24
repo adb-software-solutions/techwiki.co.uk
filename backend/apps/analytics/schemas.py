@@ -1,30 +1,34 @@
 """Pydantic schemas for Analytics API."""
 
-from datetime import date
-
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
-# Request schemas
 class PageViewRequest(BaseModel):
-    path: str
-    full_url: str | None = None
-    referrer: str | None = None
-    session_id: str
-    time_on_page: int | None = None
+    path: str = Field(max_length=500)
+    full_url: str | None = Field(default=None, max_length=1000)
+    referrer: str | None = Field(default=None, max_length=1000)
+    session_id: str = Field(max_length=64)
+    article_id: str | None = None
+
+
+class EngagementRequest(BaseModel):
+    page_view_id: str
+    session_id: str = Field(max_length=64)
+    seconds: int = Field(ge=0)
+    scroll_depth: int | None = Field(default=None, ge=0, le=100)
 
 
 class ArticleViewRequest(BaseModel):
     article_id: str
-    session_id: str
+    session_id: str = Field(max_length=64)
     time_on_article: int | None = None
     scroll_depth: int | None = None
 
 
 class SearchQueryRequest(BaseModel):
-    query: str
+    query: str = Field(max_length=500)
     results_count: int
-    session_id: str
+    session_id: str = Field(max_length=64)
     category_filter: str | None = None
     type_filter: str | None = None
 
@@ -45,87 +49,3 @@ class EventRequest(BaseModel):
     article_id: str | None = None
     session_id: str
     metadata: dict[str, str | int | float | bool | None] | None = None
-
-
-# Response schemas
-class DailyStatsResponse(BaseModel):
-    date: date
-    total_page_views: int
-    unique_visitors: int
-    total_article_views: int
-    unique_articles_viewed: int
-    avg_time_on_article: float | None
-    total_searches: int
-    searches_with_results: int
-    searches_with_clicks: int
-    new_users: int
-    returning_users: int
-    logged_in_users: int
-    desktop_views: int
-    mobile_views: int
-    tablet_views: int
-    articles_created: int
-    articles_published: int
-    articles_updated: int
-    total_events: int
-    copy_link_clicks: int
-    edit_button_clicks: int
-
-
-class TopArticleResponse(BaseModel):
-    rank: int
-    article_id: str
-    article_title: str
-    article_slug: str
-    category_name: str | None
-    view_count: int
-    unique_visitors: int
-
-
-class TopSearchQueryResponse(BaseModel):
-    rank: int
-    query: str
-    search_count: int
-    click_through_rate: float | None
-
-
-class AnalyticsSummaryResponse(BaseModel):
-    """Summary analytics for the dashboard."""
-
-    period: str  # "today", "week", "month"
-    total_page_views: int
-    unique_visitors: int
-    total_article_views: int
-    total_searches: int
-    avg_time_on_article: float | None
-    bounce_rate: float | None
-
-    # Comparison with previous period
-    page_views_change: float | None  # percentage
-    visitors_change: float | None
-    article_views_change: float | None
-    searches_change: float | None
-
-
-class TrafficSourceResponse(BaseModel):
-    source: str
-    count: int
-    percentage: float
-
-
-class DeviceBreakdownResponse(BaseModel):
-    desktop: int
-    mobile: int
-    tablet: int
-    desktop_percentage: float
-    mobile_percentage: float
-    tablet_percentage: float
-
-
-class AnalyticsDashboardResponse(BaseModel):
-    summary: AnalyticsSummaryResponse
-    daily_stats: list[DailyStatsResponse]
-    top_articles: list[TopArticleResponse]
-    top_searches: list[TopSearchQueryResponse]
-    traffic_sources: list[TrafficSourceResponse]
-    device_breakdown: DeviceBreakdownResponse
