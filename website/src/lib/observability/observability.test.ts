@@ -6,7 +6,7 @@ import { NextRequest } from "next/server";
 
 import { GET as healthz } from "@/app/healthz/route";
 import { GET as metricsRoute } from "@/app/metrics/route";
-import { middleware } from "@/middleware";
+import { proxy } from "@/proxy";
 
 import { SERVICE, jsonLine, useJsonConsole } from "./json-console.mjs";
 import {
@@ -141,12 +141,12 @@ describe("routes", () => {
     });
 });
 
-describe("middleware", () => {
+describe("proxy", () => {
     test("passes /healthz and /metrics straight through", async () => {
         const fetchSpy = jest.spyOn(global, "fetch");
         try {
             for (const path of ["/healthz", "/metrics"]) {
-                const response = await middleware(
+                const response = await proxy(
                     new NextRequest(`http://localhost:3000${path}`),
                 );
                 expect(response?.headers.get("x-middleware-next")).toBe("1");

@@ -7,7 +7,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
  * Middleware to handle legacy MediaWiki URL redirects
  * and other path transformations.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // Docker's health check and Prometheus: never redirect or look these up.
