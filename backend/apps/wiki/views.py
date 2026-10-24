@@ -653,6 +653,20 @@ def update_article(
         if article.author != request.user and not (profile and profile.can_moderate):
             return 200, {"success": False, "message": "Permission denied"}
 
+        # The edit page can save as a draft, submit for review, or publish. Other
+        # statuses belong to the moderation workflow.
+        new_status = data.status if data.status and data.status != article.status else None
+        if new_status == ArticleStatus.PUBLISHED:
+            can_publish = (
+                request.user.is_staff
+                or request.user.is_superuser
+                or (profile and profile.can_publish_directly)
+            )
+            if not can_publish:
+                return 200, {"success": False, "message": "Permission denied"}
+        elif new_status not in {None, ArticleStatus.DRAFT, ArticleStatus.PENDING_REVIEW}:
+            return 200, {"success": False, "message": "Invalid status"}
+
         with transaction.atomic():
             # Update fields
             if data.title is not None:
@@ -674,6 +688,10 @@ def update_article(
                 article.meta_description = data.meta_description
             if data.allow_comments is not None:
                 article.allow_comments = data.allow_comments
+            if new_status:
+                article.status = new_status
+                if new_status == ArticleStatus.PUBLISHED and not article.published_at:
+                    article.published_at = timezone.now()
 
             article.version += 1
             article.save()
