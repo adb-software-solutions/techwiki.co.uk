@@ -9,13 +9,14 @@ from uuid import UUID
 
 import markdown
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import DateTimeField, F, Max, Q, QuerySet
+from django.db.models import Count, DateTimeField, F, Max, Q, QuerySet
 from django.db.models.functions import Coalesce
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.text import slugify
-from ninja import Form, Router
+from ninja import File, Form, Router
 from ninja.files import UploadedFile
 
 from apps.wiki.models import (
@@ -33,6 +34,7 @@ from apps.wiki.models import (
 from apps.wiki.schemas import (
     ArticleCreateRequest,
     ArticleUpdateRequest,
+    CategoryWriteRequest,
     ModerationActionRequest,
     RedirectCreateRequest,
     TagCreateRequest,
@@ -249,137 +251,152 @@ def get_category(request: HttpRequest, slug: str) -> tuple[int, dict[str, Any]]:
 # ============================================================================
 
 
-@wiki_router.post("/admin/categories", response={200: dict})
-def create_category(  # noqa: PLR0917
-    request: HttpRequest,
-    name: str = Form[str](""),
-    slug: str = Form[str](""),
-    description: str = Form[str](""),
-    icon: str = Form[str](""),
-    parent_id: str = Form[str](""),
-) -> tuple[int, dict[str, Any]]:
-    """Create a new category (staff/moderators only)."""
-    if not request.user.is_authenticated:
-        return 200, {"success": False, "message": "Permission denied"}
+def _can_manage_categories(request: HttpRequest) -> bool:
+    return request.user.is_authenticated and is_moderator(request.user)
 
-    profile = get_user_profile(request.user)
-    if not (request.user.is_staff or (profile and profile.can_moderate)):
-        return 200, {"success": False, "message": "Permission denied"}
 
-    try:
-        parent = None
-        if parent_id:
-            try:
-                parent = Category.objects.get(id=parent_id)
-            except Category.DoesNotExist:
-                return 200, {"success": False, "message": "Parent category not found"}
+def _admin_category(category: Category, counts: dict[Any, dict[str, int]]) -> dict[str, Any]:
+    category_counts = counts.get(category.id, {})
+    return {
+        "id": str(category.id),
+        "name": category.name,
+        "slug": category.slug,
+        "description": category.description,
+        "icon": category.icon,
+        "order": category.order,
+        "parent_id": str(category.parent_id) if category.parent_id else None,
+        "is_active": category.is_active,
+        "full_path": category.full_path,
+        "article_count": category_counts.get("published", 0),
+        "total_articles": category_counts.get("total", 0),
+    }
 
-        category = Category.objects.create(
-            name=name,
-            slug=slug or slugify(name),
-            description=description or "",
-            icon=icon or "",
-            parent=parent,
-            is_active=True,
+
+def _category_counts() -> dict[Any, dict[str, int]]:
+    rows = (
+        Article.objects.filter(category__isnull=False)
+        .values("category")
+        .annotate(
+            total=Count("id"),
+            published=Count("id", filter=Q(status=ArticleStatus.PUBLISHED)),
         )
+    )
+    return {row["category"]: {"total": row["total"], "published": row["published"]} for row in rows}
 
-        return 200, {
-            "success": True,
-            "category": {
-                "id": str(category.id),
-                "name": category.name,
-                "slug": category.slug,
-                "description": category.description,
-                "icon": category.icon,
-                "parent_id": str(category.parent_id) if category.parent_id else None,
-            },
-        }
-    except Exception as e:
-        logger.error("Failed to create category: %s", e)
-        return 200, {"success": False, "message": "Failed to create category"}
+
+def _apply_category(category: Category, data: CategoryWriteRequest) -> str | None:
+    """Copy request fields onto the category; return an error message if invalid."""
+    name = data.name.strip()
+    if not name:
+        return "Name is required"
+    slug = slugify(data.slug.strip() or name)
+    if not slug:
+        return "Slug is required"
+    clash = Category.objects.exclude(id=category.id)
+    if clash.filter(name__iexact=name).exists():
+        return "A category with this name already exists"
+    if clash.filter(slug=slug).exists():
+        return "A category with this slug already exists"
+
+    parent = None
+    if data.parent_id:
+        try:
+            parent = Category.objects.get(id=data.parent_id)
+        except (Category.DoesNotExist, ValueError, ValidationError):
+            return "Parent category not found"
+        ancestor: Category | None = parent
+        while ancestor is not None:
+            if ancestor.id == category.id:
+                return "A category cannot be inside itself"
+            ancestor = ancestor.parent
+
+    category.name = name
+    category.slug = slug
+    category.description = data.description.strip()
+    category.icon = data.icon.strip()
+    category.order = data.order
+    category.is_active = data.is_active
+    category.parent = parent
+    return None
+
+
+@wiki_router.get("/admin/categories", response={200: dict})
+def list_admin_categories(request: HttpRequest) -> tuple[int, dict[str, Any]]:
+    """List every category, including hidden ones, with article counts."""
+    if not _can_manage_categories(request):
+        return 200, {"success": False, "message": "Permission denied"}
+    counts = _category_counts()
+    categories = Category.objects.select_related("parent").order_by("order", "name")
+    return 200, {
+        "success": True,
+        "categories": [_admin_category(category, counts) for category in categories],
+    }
+
+
+@wiki_router.post("/admin/categories", response={200: dict})
+def create_category(request: HttpRequest, data: CategoryWriteRequest) -> tuple[int, dict[str, Any]]:
+    """Create a new category (staff/moderators only)."""
+    if not _can_manage_categories(request):
+        return 200, {"success": False, "message": "Permission denied"}
+
+    category = Category()
+    error = _apply_category(category, data)
+    if error:
+        return 200, {"success": False, "message": error}
+    category.save()
+    return 200, {
+        "success": True,
+        "message": "Category created",
+        "category": _admin_category(category, {}),
+    }
 
 
 @wiki_router.put("/admin/categories/{category_id}", response={200: dict})
-def update_category(  # noqa: PLR0917
-    request: HttpRequest,
-    category_id: str,
-    name: str = Form[str](""),
-    slug: str = Form[str](""),
-    description: str = Form[str](""),
-    icon: str = Form[str](""),
-    parent_id: str = Form[str](""),
+def update_category(
+    request: HttpRequest, category_id: str, data: CategoryWriteRequest
 ) -> tuple[int, dict[str, Any]]:
     """Update a category (staff/moderators only)."""
-    if not request.user.is_authenticated:
-        return 200, {"success": False, "message": "Permission denied"}
-
-    profile = get_user_profile(request.user)
-    if not (request.user.is_staff or (profile and profile.can_moderate)):
+    if not _can_manage_categories(request):
         return 200, {"success": False, "message": "Permission denied"}
 
     try:
         category = Category.objects.get(id=category_id)
-
-        parent = None
-        if parent_id and parent_id != str(category.id):  # Prevent self-parenting
-            try:
-                parent = Category.objects.get(id=parent_id)
-            except Category.DoesNotExist:
-                return 200, {"success": False, "message": "Parent category not found"}
-
-        category.name = name
-        category.slug = slug or slugify(name)
-        category.description = description or ""
-        category.icon = icon or ""
-        category.parent = parent
-        category.save()
-
-        return 200, {
-            "success": True,
-            "category": {
-                "id": str(category.id),
-                "name": category.name,
-                "slug": category.slug,
-                "description": category.description,
-                "icon": category.icon,
-                "parent_id": str(category.parent_id) if category.parent_id else None,
-            },
-        }
-    except Category.DoesNotExist:
+    except (Category.DoesNotExist, ValueError, ValidationError):
         return 200, {"success": False, "message": "Category not found"}
-    except Exception as e:
-        logger.error("Failed to update category: %s", e)
-        return 200, {"success": False, "message": "Failed to update category"}
+
+    error = _apply_category(category, data)
+    if error:
+        return 200, {"success": False, "message": error}
+    category.save()
+    return 200, {
+        "success": True,
+        "message": "Category saved",
+        "category": _admin_category(category, _category_counts()),
+    }
 
 
 @wiki_router.delete("/admin/categories/{category_id}", response={200: dict})
 def delete_category(request: HttpRequest, category_id: str) -> tuple[int, dict[str, Any]]:
-    """Delete a category (staff/moderators only)."""
-    if not request.user.is_authenticated:
-        return 200, {"success": False, "message": "Permission denied"}
-
-    profile = get_user_profile(request.user)
-    if not (request.user.is_staff or (profile and profile.can_moderate)):
+    """Delete an empty category (staff/moderators only)."""
+    if not _can_manage_categories(request):
         return 200, {"success": False, "message": "Permission denied"}
 
     try:
         category = Category.objects.get(id=category_id)
-
-        # Check if category has articles
-        if category.article_count > 0:
-            return 200, {"success": False, "message": "Cannot delete category with articles"}
-
-        # Check if category has subcategories
-        if Category.objects.filter(parent=category).exists():
-            return 200, {"success": False, "message": "Cannot delete category with subcategories"}
-
-        category.delete()
-        return 200, {"success": True, "message": "Category deleted"}
-    except Category.DoesNotExist:
+    except (Category.DoesNotExist, ValueError, ValidationError):
         return 200, {"success": False, "message": "Category not found"}
-    except Exception as e:
-        logger.error("Failed to delete category: %s", e)
-        return 200, {"success": False, "message": "Failed to delete category"}
+
+    # Any article counts, drafts included: deleting would leave them uncategorised.
+    if category.articles.exists():
+        return 200, {
+            "success": False,
+            "message": "Move or delete this category's articles first, or hide it instead",
+        }
+    if category.children.exists():
+        return 200, {"success": False, "message": "Cannot delete category with subcategories"}
+
+    category.delete()
+    return 200, {"success": True, "message": "Category deleted"}
 
 
 # ============================================================================
@@ -1195,22 +1212,25 @@ def get_wiki_profile(request: HttpRequest) -> tuple[int, dict[str, Any]]:
     }
 
 
-@wiki_router.put("/me", response={200: dict})
+# POST, not PUT: Django only parses multipart bodies (the photo upload) on POST.
+# A PUT arrived with every field empty and wiped the profile.
+@wiki_router.post("/me", response={200: dict})
 def update_wiki_profile(  # noqa: PLR0917
     request: HttpRequest,
-    bio: str = Form[str](""),
-    website: str = Form[str](""),
-    github: str = Form[str](""),
-    twitter: str = Form[str](""),
-    bluesky: str = Form[str](""),
-    linkedin: str = Form[str](""),
-    instagram: str = Form[str](""),
-    facebook: str = Form[str](""),
-    devto: str = Form[str](""),
-    stackoverflow: str = Form[str](""),
-    youtube: str = Form[str](""),
-    twitch: str = Form[str](""),
-    photo: UploadedFile | None = None,
+    bio: Form[str] = "",
+    website: Form[str] = "",
+    github: Form[str] = "",
+    twitter: Form[str] = "",
+    bluesky: Form[str] = "",
+    linkedin: Form[str] = "",
+    instagram: Form[str] = "",
+    facebook: Form[str] = "",
+    devto: Form[str] = "",
+    stackoverflow: Form[str] = "",
+    youtube: Form[str] = "",
+    twitch: Form[str] = "",
+    photo: File[UploadedFile | None] = None,
+    remove_photo: Form[bool] = False,
 ) -> tuple[int, dict[str, Any]]:
     """Update current user's wiki profile."""
     if not request.user.is_authenticated:
@@ -1232,6 +1252,10 @@ def update_wiki_profile(  # noqa: PLR0917
     profile.stackoverflow = stackoverflow
     profile.youtube = youtube
     profile.twitch = twitch
+
+    if remove_photo and profile.photo and not photo:
+        profile.photo.delete(save=False)
+        profile.photo = None
 
     # Handle photo upload
     if photo:

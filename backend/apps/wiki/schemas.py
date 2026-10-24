@@ -30,6 +30,18 @@ class CategoryListResponse(Schema):
     categories: list[CategoryResponse]
 
 
+class CategoryWriteRequest(Schema):
+    """Create or update a category."""
+
+    name: str
+    slug: str = ""
+    description: str = ""
+    icon: str = ""
+    order: int = 0
+    parent_id: str | None = None
+    is_active: bool = True
+
+
 class CategoryTreeItem(CategoryBase):
     id: str
     children: list["CategoryTreeItem"] = []
