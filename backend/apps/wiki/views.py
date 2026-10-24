@@ -1206,7 +1206,8 @@ def get_wiki_profile(request: HttpRequest) -> tuple[int, dict[str, Any]]:
             "is_moderator": profile.can_moderate if profile else False,
             "is_staff": request.user.is_staff,
             "is_superuser": request.user.is_superuser,
-            "articles_count": profile.articles_count if profile else 0,
+            # Counted live: the stored counter misses authoring-API articles.
+            "articles_count": Article.objects.filter(author=request.user).count(),
         },
         "message": "Profile retrieved successfully",
     }
@@ -1311,7 +1312,7 @@ def update_wiki_profile(  # noqa: PLR0917
             "is_moderator": profile.can_moderate,
             "is_staff": request.user.is_staff,
             "is_superuser": request.user.is_superuser,
-            "articles_count": profile.articles_count,
+            "articles_count": Article.objects.filter(author=request.user).count(),
         },
     }
 

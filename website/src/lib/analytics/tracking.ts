@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -9,129 +9,145 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 function getSessionId(): string {
     if (typeof window === "undefined") return "";
 
-    let sessionId = sessionStorage.getItem("tw_session_id");
-    if (!sessionId) {
-        sessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-        sessionStorage.setItem("tw_session_id", sessionId);
+    try {
+        let sessionId = sessionStorage.getItem("tw_session_id");
+        if (!sessionId) {
+            sessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+            sessionStorage.setItem("tw_session_id", sessionId);
+        }
+        return sessionId;
+    } catch {
+        return "";
     }
-    return sessionId;
 }
 
 // Track an event to our internal analytics
-async function trackEvent(
+async function trackEvent<T = unknown>(
     endpoint: string,
     data: Record<string, unknown>,
-): Promise<void> {
+    keepalive = false,
+): Promise<T | null> {
+    const sessionId = getSessionId();
+    if (!sessionId) return null;
     try {
-        await fetch(`${API_BASE}/api/analytics/track/${endpoint}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-                ...data,
-                session_id: getSessionId(),
-            }),
-        });
-    } catch (err) {
-        // Silently fail - analytics should never break the app
-        console.debug("Analytics tracking failed:", err);
+        const response = await fetch(
+            `${API_BASE}/api/analytics/track/${endpoint}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                // Lets the request finish while the page is being left.
+                keepalive,
+                body: JSON.stringify({ ...data, session_id: sessionId }),
+            },
+        );
+        return response.ok ? ((await response.json()) as T) : null;
+    } catch {
+        // Analytics should never break the app
+        return null;
     }
 }
 
+function scrollDepth(): number {
+    const scrollable =
+        document.documentElement.scrollHeight - window.innerHeight;
+    if (scrollable <= 0) return 100;
+    return Math.min(100, Math.round((window.scrollY / scrollable) * 100));
+}
+
 /**
- * Hook to track page views automatically
+ * Records a page view for each public page and reports visible time and
+ * scroll depth when the visitor leaves or hides it. The API works out from
+ * the path whether the page is an article.
  */
-export function usePageTracking() {
+export function SiteAnalytics() {
     const pathname = usePathname();
-    const searchParams = useSearchParams();
-    const lastPathRef = useRef<string>("");
-    const startTimeRef = useRef<number>(Date.now());
 
     useEffect(() => {
-        const fullPath =
-            pathname +
-            (searchParams.toString() ? `?${searchParams.toString()}` : "");
+        let pageViewId: string | null = null;
+        let visibleMs = 0;
+        let visibleSince: number | null =
+            document.visibilityState === "visible" ? Date.now() : null;
+        let maxScroll = scrollDepth();
 
-        // Don't track same page twice
-        if (fullPath === lastPathRef.current) return;
-
-        // Track time on previous page
-        if (lastPathRef.current) {
-            const timeOnPage = Math.round(
-                (Date.now() - startTimeRef.current) / 1000,
-            );
-            if (timeOnPage > 0 && timeOnPage < 3600) {
-                // Update previous page view with time
-                // This would require storing the previous page view ID
-            }
-        }
-
-        // Track new page view
-        trackEvent("pageview", {
+        const viewRequest = trackEvent<{ id: string | null }>("pageview", {
             path: pathname,
-            full_url: typeof window !== "undefined" ? window.location.href : "",
-            referrer:
-                typeof document !== "undefined" ? document.referrer : null,
+            full_url: window.location.href,
+            referrer: document.referrer || null,
+        }).then((result) => {
+            pageViewId = result?.id ?? null;
         });
 
-        lastPathRef.current = fullPath;
-        startTimeRef.current = Date.now();
-    }, [pathname, searchParams]);
-}
-
-/**
- * Hook to track article views
- */
-export function useArticleTracking(articleId: string | null) {
-    const startTimeRef = useRef<number>(Date.now());
-    const maxScrollRef = useRef<number>(0);
-    const trackedRef = useRef<boolean>(false);
-
-    useEffect(() => {
-        if (!articleId || trackedRef.current) return;
-
-        // Track article view
-        trackEvent("article", {
-            article_id: articleId,
-        });
-        trackedRef.current = true;
-
-        // Track scroll depth
-        const handleScroll = () => {
-            const scrollHeight =
-                document.documentElement.scrollHeight - window.innerHeight;
-            const currentScroll = window.scrollY;
-            const scrollPercent = Math.round(
-                (currentScroll / scrollHeight) * 100,
-            );
-            maxScrollRef.current = Math.max(
-                maxScrollRef.current,
-                scrollPercent,
+        const sendEngagement = () => {
+            if (visibleSince !== null) {
+                visibleMs += Date.now() - visibleSince;
+                visibleSince = null;
+            }
+            if (!pageViewId) return;
+            trackEvent(
+                "engagement",
+                {
+                    page_view_id: pageViewId,
+                    seconds: Math.round(visibleMs / 1000),
+                    scroll_depth: maxScroll,
+                },
+                true,
             );
         };
+        const onScroll = () => {
+            maxScroll = Math.max(maxScroll, scrollDepth());
+        };
+        const onVisibility = () => {
+            if (document.visibilityState === "hidden") {
+                sendEngagement();
+            } else {
+                visibleSince = Date.now();
+            }
+        };
 
-        window.addEventListener("scroll", handleScroll);
-
-        // Track time and scroll on unmount
+        window.addEventListener("scroll", onScroll, { passive: true });
+        document.addEventListener("visibilitychange", onVisibility);
+        window.addEventListener("pagehide", sendEngagement);
         return () => {
-            window.removeEventListener("scroll", handleScroll);
-
-            const timeOnArticle = Math.round(
-                (Date.now() - startTimeRef.current) / 1000,
-            );
-            // Could send an update with time and scroll depth here
+            window.removeEventListener("scroll", onScroll);
+            document.removeEventListener("visibilitychange", onVisibility);
+            window.removeEventListener("pagehide", sendEngagement);
+            // Client-side navigation to another page.
+            viewRequest.then(sendEngagement);
         };
-    }, [articleId]);
+    }, [pathname]);
+
+    return null;
 }
 
 /**
- * Track search events
+ * Track search events. Resolves to the search's ID, for trackSearchClick.
  */
-export function trackSearch(query: string, resultsCount: number) {
-    return trackEvent("search", {
+export async function trackSearch(
+    query: string,
+    resultsCount: number,
+    filters?: { category?: string; type?: string },
+): Promise<string | null> {
+    const result = await trackEvent<{ id: string }>("search", {
         query,
         results_count: resultsCount,
+        category_filter: filters?.category || null,
+        type_filter: filters?.type || null,
     });
+    return result?.id || null;
+}
+
+/** Record which result a search led to; sent as the visitor navigates away. */
+export function trackSearchClick(
+    searchId: string,
+    articleId: string,
+    position: number,
+) {
+    return trackEvent(
+        "search-click",
+        { search_id: searchId, article_id: articleId, position },
+        true,
+    );
 }
 
 /**
@@ -192,13 +208,6 @@ export const internalAnalytics = {
     tagClick: (tagSlug: string) =>
         trackCustomEvent("navigation", "tag_click", {
             metadata: { tag: tagSlug },
-        }),
-
-    // Search
-    searchClick: (query: string, articleId: string, position: number) =>
-        trackCustomEvent("search", "result_click", {
-            articleId,
-            metadata: { query, position },
         }),
 
     // Auth

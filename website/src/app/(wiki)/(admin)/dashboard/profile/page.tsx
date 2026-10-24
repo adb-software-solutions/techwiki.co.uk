@@ -1,6 +1,15 @@
 "use client";
 
+import {
+    buttonClass,
+    Card,
+    inputClass,
+    PageHeader,
+    useToast,
+} from "@/components/admin/ui";
+import { SiteLink } from "@/components/wiki/SiteLink";
 import { useAuth } from "@/lib/auth";
+import type { WikiUser } from "@/lib/auth/types";
 import {
     SiBluesky,
     SiDevdotto,
@@ -12,485 +21,326 @@ import {
     SiX,
     SiYoutube,
 } from "@icons-pack/react-simple-icons";
-import { Globe } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { ExternalLink, Globe, ShieldCheck, Upload } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { FaLinkedin } from "react-icons/fa";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 
-interface ProfileFormData {
-    bio: string;
-    website: string;
-    github: string;
-    twitter: string;
-    bluesky: string;
-    linkedin: string;
-    instagram: string;
-    facebook: string;
-    devto: string;
-    stackoverflow: string;
-    youtube: string;
-    twitch: string;
-}
+const LINKS = [
+    { key: "website", label: "Website", icon: Globe },
+    { key: "github", label: "GitHub", icon: SiGithub },
+    { key: "twitter", label: "X (Twitter)", icon: SiX },
+    { key: "bluesky", label: "Bluesky", icon: SiBluesky },
+    { key: "linkedin", label: "LinkedIn", icon: FaLinkedin },
+    { key: "instagram", label: "Instagram", icon: SiInstagram },
+    { key: "facebook", label: "Facebook", icon: SiFacebook },
+    { key: "devto", label: "Dev.to", icon: SiDevdotto },
+    { key: "stackoverflow", label: "Stack Overflow", icon: SiStackoverflow },
+    { key: "youtube", label: "YouTube", icon: SiYoutube },
+    { key: "twitch", label: "Twitch", icon: SiTwitch },
+] as const;
 
-type ProfileFormDataWithPhoto = ProfileFormData & {
-    photo?: File;
+type LinkKey = (typeof LINKS)[number]["key"];
+type ProfileFields = Record<LinkKey | "bio", string>;
+
+const ROLE_LABELS: Record<string, string> = {
+    reader: "Reader",
+    contributor: "Contributor",
+    trusted_contributor: "Trusted contributor",
+    moderator: "Moderator",
+    admin: "Admin",
 };
 
-type IconComponent = React.ComponentType<{ className?: string }>;
-
-interface SocialPlatform {
-    key: string;
-    label: string;
-    icon: IconComponent;
+function fieldsFrom(user: WikiUser): ProfileFields {
+    return {
+        bio: user.bio || "",
+        website: user.website || "",
+        github: user.github || "",
+        twitter: user.twitter || "",
+        bluesky: user.bluesky || "",
+        linkedin: user.linkedin || "",
+        instagram: user.instagram || "",
+        facebook: user.facebook || "",
+        devto: user.devto || "",
+        stackoverflow: user.stackoverflow || "",
+        youtube: user.youtube || "",
+        twitch: user.twitch || "",
+    };
 }
 
-const SOCIAL_PLATFORMS: SocialPlatform[] = [
-    {
-        key: "website",
-        label: "Website",
-        icon: Globe,
-    },
-    {
-        key: "github",
-        label: "GitHub",
-        icon: SiGithub,
-    },
-    {
-        key: "twitter",
-        label: "X (Twitter)",
-        icon: SiX,
-    },
-    {
-        key: "bluesky",
-        label: "Bluesky",
-        icon: SiBluesky,
-    },
-    {
-        key: "linkedin",
-        label: "LinkedIn",
-        icon: FaLinkedin,
-    },
-    {
-        key: "instagram",
-        label: "Instagram",
-        icon: SiInstagram,
-    },
-    {
-        key: "facebook",
-        label: "Facebook",
-        icon: SiFacebook,
-    },
-    {
-        key: "devto",
-        label: "Dev.to",
-        icon: SiDevdotto,
-    },
-    {
-        key: "stackoverflow",
-        label: "Stack Overflow",
-        icon: SiStackoverflow,
-    },
-    {
-        key: "youtube",
-        label: "YouTube",
-        icon: SiYoutube,
-    },
-    {
-        key: "twitch",
-        label: "Twitch",
-        icon: SiTwitch,
-    },
-];
-
-const getPhotoUrl = (photo: string | null | undefined): string | null => {
+function photoUrl(photo: string | null | undefined): string | null {
     if (!photo) return null;
-    if (photo.startsWith("http")) return photo;
-    return `${API_BASE}${photo}`;
-};
+    return photo.startsWith("http") ? photo : `${API_BASE}${photo}`;
+}
 
 export default function ProfilePage() {
-    const { user, isAuthenticated, isLoading, getLoginUrl, refreshUser } =
-        useAuth();
-    const router = useRouter();
-    const [formData, setFormData] = useState<ProfileFormDataWithPhoto>({
-        bio: "",
-        website: "",
-        github: "",
-        twitter: "",
-        bluesky: "",
-        linkedin: "",
-        instagram: "",
-        facebook: "",
-        devto: "",
-        stackoverflow: "",
-        youtube: "",
-        twitch: "",
-    });
-    const [loading, setLoading] = useState(false);
+    const { user, refreshUser, getAccountUrl } = useAuth();
+    const toast = useToast();
+    const fileInput = useRef<HTMLInputElement>(null);
+    const [fields, setFields] = useState<ProfileFields | null>(null);
+    const [photo, setPhoto] = useState<File | null>(null);
+    const [removePhoto, setRemovePhoto] = useState(false);
+    const [preview, setPreview] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
-    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-    const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setFormData((prev) => ({ ...prev, photo: file }));
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setPhotoPreview(reader.result as string);
-            };
-            reader.readAsDataURL(file);
+    useEffect(() => {
+        if (user && fields === null) setFields(fieldsFrom(user));
+    }, [user, fields]);
+
+    useEffect(() => {
+        if (!photo) return;
+        const url = URL.createObjectURL(photo);
+        setPreview(url);
+        return () => URL.revokeObjectURL(url);
+    }, [photo]);
+
+    if (!user || !fields) return null;
+
+    const saved = fieldsFrom(user);
+    const dirty =
+        photo !== null ||
+        removePhoto ||
+        JSON.stringify(fields) !== JSON.stringify(saved);
+    const shownPhoto = removePhoto ? null : preview || photoUrl(user.photo);
+    const name = `${user.firstName} ${user.lastName}`.trim() || user.email;
+    const initials =
+        (user.firstName?.[0] ?? "") + (user.lastName?.[0] ?? "") ||
+        user.email[0].toUpperCase();
+
+    const choosePhoto = (file: File | undefined) => {
+        if (!file) return;
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+            toast("Use a JPEG, PNG or WebP image", "error");
+            return;
         }
+        if (file.size > MAX_PHOTO_BYTES) {
+            toast("Photos must be 2 MB or smaller", "error");
+            return;
+        }
+        setPhoto(file);
+        setRemovePhoto(false);
     };
 
-    // Redirect to login if not authenticated
-    useEffect(() => {
-        if (!isLoading && !isAuthenticated) {
-            router.push(getLoginUrl("/dashboard/profile"));
-        }
-    }, [isLoading, isAuthenticated, router, getLoginUrl]);
-
-    // Load user profile data
-    useEffect(() => {
-        if (!isAuthenticated || !user) return;
-
-        setLoading(true);
-        setFormData({
-            bio: user.bio || "",
-            website: user.website || "",
-            github: user.github || "",
-            twitter: user.twitter || "",
-            bluesky: user.bluesky || "",
-            linkedin: user.linkedin || "",
-            instagram: user.instagram || "",
-            facebook: user.facebook || "",
-            devto: user.devto || "",
-            stackoverflow: user.stackoverflow || "",
-            youtube: user.youtube || "",
-            twitch: user.twitch || "",
-        });
-
-        // Set photo preview if user has a photo
-        if (user.photo) {
-            setPhotoPreview(getPhotoUrl(user.photo));
-        }
-
-        setLoading(false);
-    }, [isAuthenticated, user]);
-
-    const handleChange = (
-        e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-    ) => {
-        const { name, value } = e.target;
-        setFormData((prev) => ({
-            ...prev,
-            [name]: value,
-        }));
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const save = async (event: FormEvent) => {
+        event.preventDefault();
         setSaving(true);
-        setError(null);
-        setSuccess(false);
-
+        const body = new FormData();
+        Object.entries(fields).forEach(([key, value]) =>
+            body.append(key, value.trim()),
+        );
+        if (photo) body.append("photo", photo);
+        if (removePhoto) body.append("remove_photo", "true");
         try {
-            const formDataToSend = new FormData();
-
-            // Add text fields
-            formDataToSend.append("bio", formData.bio);
-            formDataToSend.append("website", formData.website);
-            formDataToSend.append("github", formData.github);
-            formDataToSend.append("twitter", formData.twitter);
-            formDataToSend.append("bluesky", formData.bluesky);
-            formDataToSend.append("linkedin", formData.linkedin);
-            formDataToSend.append("instagram", formData.instagram);
-            formDataToSend.append("facebook", formData.facebook);
-            formDataToSend.append("devto", formData.devto);
-            formDataToSend.append("stackoverflow", formData.stackoverflow);
-            formDataToSend.append("youtube", formData.youtube);
-            formDataToSend.append("twitch", formData.twitch);
-
-            // Add photo if selected
-            if (formData.photo instanceof File) {
-                formDataToSend.append("photo", formData.photo);
-            }
-
             const response = await fetch(`${API_BASE}/api/wiki/me`, {
-                method: "PUT",
+                method: "POST",
                 credentials: "include",
-                body: formDataToSend,
+                body,
             });
-
-            const data = await response.json();
-
-            if (data.success) {
-                setSuccess(true);
-                // Refresh user data from the server
-                await refreshUser();
-                setTimeout(() => setSuccess(false), 5000);
-            } else {
-                setError(data.message || "Failed to update profile");
+            const data: { success: boolean; message?: string } =
+                await response.json();
+            if (!data.success) {
+                toast(data.message || "Could not save your profile", "error");
+                return;
             }
-        } catch (err) {
-            console.error("Profile update error:", err);
-            setError("An error occurred while updating your profile");
+            await refreshUser();
+            setFields(null);
+            setPhoto(null);
+            setPreview(null);
+            setRemovePhoto(false);
+            toast("Profile saved");
+        } catch {
+            toast("Could not save your profile", "error");
         } finally {
             setSaving(false);
         }
     };
 
-    if (isLoading || !isAuthenticated) {
-        return (
-            <div className="flex min-h-[400px] items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-            </div>
+    const set = (key: keyof ProfileFields, value: string) =>
+        setFields((current) =>
+            current ? { ...current, [key]: value } : current,
         );
-    }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div>
-                <h1 className="text-2xl font-semibold text-white">
-                    Edit Profile
-                </h1>
-                <p className="mt-1 text-gray-400">
-                    Update your public profile information
-                </p>
-            </div>
-
-            {/* Success Message */}
-            {success && (
-                <div className="rounded-lg border border-green-800 bg-green-900/20 px-4 py-3 text-green-300">
-                    <p className="font-medium">
-                        ✓ Profile updated successfully
-                    </p>
-                </div>
-            )}
-
-            {/* Error Message */}
-            {error && (
-                <div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-red-300">
-                    <p className="font-medium">✗ {error}</p>
-                </div>
-            )}
-
-            {/* Profile Card */}
-            <div className="rounded-lg border border-gray-700 bg-gray-800 p-6">
-                {/* User Info Header */}
-                <div className="mb-8 border-b border-gray-700 pb-6">
-                    <div className="flex items-center gap-4">
-                        <div className="relative">
-                            {photoPreview || user?.photo ? (
-                                <Image
-                                    src={
-                                        photoPreview ||
-                                        getPhotoUrl(user?.photo) ||
-                                        ""
-                                    }
-                                    alt="Profile"
-                                    width={64}
-                                    height={64}
-                                    className="h-16 w-16 rounded-lg object-cover"
-                                />
-                            ) : (
-                                <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-blue-600">
-                                    <span className="text-2xl font-bold text-white">
-                                        {user?.firstName?.charAt(0) || "U"}
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-semibold text-white">
-                                {user?.firstName} {user?.lastName}
-                            </h2>
-                            <p className="text-gray-400">{user?.email}</p>
-                            {user?.articlesCount !== undefined && (
-                                <p className="mt-1 text-sm text-gray-500">
-                                    {user.articlesCount} article
-                                    {user.articlesCount !== 1 ? "s" : ""}{" "}
-                                    published
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* Profile Photo */}
-                    <div>
-                        <label
-                            htmlFor="photo"
-                            className="block text-sm font-medium text-white"
+        <form onSubmit={save}>
+            <PageHeader
+                title="Profile"
+                description="How you appear as an author on TechWiki."
+                actions={
+                    <>
+                        <SiteLink
+                            href={`/authors/${user.id}`}
+                            className={buttonClass("secondary")}
                         >
-                            Profile Photo
-                        </label>
-                        <p className="mt-1 text-sm text-gray-400">
-                            Upload a profile photo (JPEG, PNG, or WebP, max 2MB)
-                        </p>
-                        <input
-                            id="photo"
-                            name="photo"
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            onChange={handlePhotoChange}
-                            className="mt-3 w-full rounded-lg border border-gray-600 bg-gray-900 px-4 py-2 text-white file:mr-4 file:rounded file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-white hover:file:bg-blue-700"
-                        />
-                    </div>
-
-                    {/* Bio */}
-                    <div>
-                        <label
-                            htmlFor="bio"
-                            className="block text-sm font-medium text-white"
-                        >
-                            Bio
-                        </label>
-                        <p className="mt-1 text-sm text-gray-400">
-                            Tell others about yourself
-                        </p>
-                        <textarea
-                            id="bio"
-                            name="bio"
-                            value={formData.bio}
-                            onChange={handleChange}
-                            rows={4}
-                            placeholder="Enter your bio..."
-                            className="mt-3 w-full rounded-lg border border-gray-600 bg-gray-900 px-4 py-2 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-                            maxLength={500}
-                        />
-                        <p className="mt-1 text-xs text-gray-500">
-                            {formData.bio.length}/500 characters
-                        </p>
-                    </div>
-
-                    {/* Website */}
-                    <div>
-                        <label
-                            htmlFor="website"
-                            className="block text-sm font-medium text-white"
-                        >
-                            Website or Blog
-                        </label>
-                        <input
-                            type="url"
-                            id="website"
-                            name="website"
-                            value={formData.website}
-                            onChange={handleChange}
-                            placeholder="https://example.com"
-                            className="mt-2 w-full rounded-lg border border-gray-600 bg-gray-900 px-4 py-2 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-                        />
-                    </div>
-
-                    {/* Social Media Fields */}
-                    <div className="border-t border-gray-700 pt-6">
-                        <h3 className="mb-4 text-lg font-semibold text-white">
-                            Social Media & Professional Links
-                        </h3>
-                        <div className="grid gap-4 md:grid-cols-2">
-                            {SOCIAL_PLATFORMS.map((platform) => (
-                                <div key={platform.key}>
-                                    <label
-                                        htmlFor={platform.key}
-                                        className="flex items-center gap-2 text-sm font-medium text-white"
-                                    >
-                                        <span className="h-5 w-5 flex-shrink-0 text-blue-400">
-                                            <platform.icon className="h-5 w-5" />
-                                        </span>
-                                        {platform.label}
-                                    </label>
-                                    <input
-                                        type="text"
-                                        id={platform.key}
-                                        name={platform.key}
-                                        value={
-                                            (formData[
-                                                platform.key as keyof ProfileFormData
-                                            ] as string) || ""
-                                        }
-                                        onChange={handleChange}
-                                        placeholder={`https://${platform.label.toLowerCase()}.com/...`}
-                                        className="mt-1 w-full rounded-lg border border-gray-600 bg-gray-900 px-4 py-2 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-3 border-t border-gray-700 pt-6">
+                            <ExternalLink className="h-4 w-4" />
+                            View public profile
+                        </SiteLink>
                         <button
                             type="submit"
-                            disabled={saving}
-                            className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                            disabled={!dirty || saving}
+                            className={buttonClass("primary")}
                         >
-                            {saving ? "Saving..." : "Save Changes"}
+                            {saving ? "Saving…" : "Save changes"}
                         </button>
-                        <Link
-                            href="/dashboard"
-                            className="flex-1 rounded-lg border border-gray-600 px-4 py-2 text-center font-medium text-white transition-colors hover:bg-gray-700"
-                        >
-                            Cancel
-                        </Link>
-                    </div>
-                </form>
-            </div>
+                    </>
+                }
+            />
 
-            {/* Social Links Preview */}
-            <div className="rounded-lg border border-gray-700 bg-gray-800 p-6">
-                <h3 className="mb-4 text-lg font-semibold text-white">
-                    Profile Preview
-                </h3>
-                <div className="space-y-2 text-sm text-gray-400">
-                    {SOCIAL_PLATFORMS.map((platform) => {
-                        const value =
-                            formData[platform.key as keyof ProfileFormData];
-                        if (!value) return null;
-                        return (
-                            <div
-                                key={platform.key}
-                                className="flex items-center gap-2"
-                            >
-                                <span className="h-4 w-4 flex-shrink-0 text-blue-400">
-                                    <platform.icon className="h-4 w-4" />
-                                </span>
-                                <a
-                                    href={value as string}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-400 hover:underline"
-                                >
-                                    {platform.label}
-                                </a>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="min-w-0 space-y-6">
+                    <Card className="space-y-5">
+                        <h2 className="font-semibold text-white">About you</h2>
+                        <div className="flex flex-wrap items-center gap-5">
+                            {shownPhoto ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={shownPhoto}
+                                    alt=""
+                                    className="h-20 w-20 rounded-full object-cover"
+                                />
+                            ) : (
+                                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-600/20 text-2xl font-semibold text-blue-200">
+                                    {initials}
+                                </div>
+                            )}
+                            <div className="space-y-2">
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            fileInput.current?.click()
+                                        }
+                                        className={buttonClass(
+                                            "secondary",
+                                            "sm",
+                                        )}
+                                    >
+                                        <Upload className="h-4 w-4" />
+                                        {shownPhoto
+                                            ? "Change photo"
+                                            : "Upload photo"}
+                                    </button>
+                                    {shownPhoto && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPhoto(null);
+                                                setPreview(null);
+                                                setRemovePhoto(
+                                                    Boolean(user.photo),
+                                                );
+                                            }}
+                                            className={buttonClass(
+                                                "ghost",
+                                                "sm",
+                                            )}
+                                        >
+                                            Remove
+                                        </button>
+                                    )}
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                    JPEG, PNG or WebP, up to 2 MB.
+                                </p>
+                                <input
+                                    ref={fileInput}
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        choosePhoto(e.target.files?.[0]);
+                                        e.target.value = "";
+                                    }}
+                                />
                             </div>
-                        );
-                    })}
-                    {!formData.github &&
-                        !formData.twitter &&
-                        !formData.linkedin &&
-                        !formData.website &&
-                        !formData.bluesky &&
-                        !formData.instagram &&
-                        !formData.facebook &&
-                        !formData.devto &&
-                        !formData.stackoverflow &&
-                        !formData.youtube &&
-                        !formData.twitch && (
-                            <p className="text-gray-500">
-                                No social links added yet
-                            </p>
-                        )}
+                        </div>
+                        <label className="block text-sm">
+                            <span className="mb-1 flex justify-between text-gray-300">
+                                Bio
+                                <span className="text-xs text-gray-500">
+                                    Shown on your author page and under your
+                                    articles
+                                </span>
+                            </span>
+                            <textarea
+                                value={fields.bio}
+                                onChange={(e) => set("bio", e.target.value)}
+                                rows={5}
+                                className={inputClass}
+                                placeholder="What do you work on and write about?"
+                            />
+                        </label>
+                    </Card>
+
+                    <Card>
+                        <h2 className="mb-1 font-semibold text-white">Links</h2>
+                        <p className="mb-5 text-sm text-gray-400">
+                            Full URLs. Empty links are hidden.
+                        </p>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            {LINKS.map(({ key, label, icon: Icon }) => (
+                                <label key={key} className="block text-sm">
+                                    <span className="mb-1 flex items-center gap-2 text-gray-300">
+                                        <Icon className="h-3.5 w-3.5 text-gray-400" />
+                                        {label}
+                                    </span>
+                                    <input
+                                        type="url"
+                                        value={fields[key]}
+                                        onChange={(e) =>
+                                            set(key, e.target.value)
+                                        }
+                                        className={inputClass}
+                                        placeholder="https://"
+                                    />
+                                </label>
+                            ))}
+                        </div>
+                    </Card>
+                </div>
+
+                <div className="space-y-6">
+                    <Card>
+                        <h2 className="mb-4 font-semibold text-white">
+                            Account
+                        </h2>
+                        <dl className="space-y-3 text-sm">
+                            <div>
+                                <dt className="text-gray-500">Name</dt>
+                                <dd className="text-gray-100">{name}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-gray-500">Email</dt>
+                                <dd className="break-all text-gray-100">
+                                    {user.email}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-gray-500">Role</dt>
+                                <dd className="text-gray-100">
+                                    {user.isSuperuser
+                                        ? "Super admin"
+                                        : ROLE_LABELS[user.role] || user.role}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-gray-500">Articles</dt>
+                                <dd className="text-gray-100 tabular-nums">
+                                    {user.articlesCount}
+                                </dd>
+                            </div>
+                        </dl>
+                        <a
+                            href={getAccountUrl()}
+                            className={`${buttonClass("secondary", "sm")} mt-5 w-full`}
+                        >
+                            <ShieldCheck className="h-4 w-4" />
+                            Account and security
+                        </a>
+                    </Card>
                 </div>
             </div>
-        </div>
+        </form>
     );
 }

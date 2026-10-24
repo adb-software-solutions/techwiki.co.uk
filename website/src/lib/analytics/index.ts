@@ -2,8 +2,8 @@ export { GoogleAdSenseScript } from "./AdSense";
 export { GoogleAnalytics, analytics } from "./GoogleAnalytics";
 export {
     internalAnalytics,
+    SiteAnalytics,
     trackCustomEvent,
     trackSearch,
-    useArticleTracking,
-    usePageTracking,
+    trackSearchClick,
 } from "./tracking";

@@ -1,452 +1,499 @@
 "use client";
 
+import { adminApi } from "@/components/admin/api";
+import { slugify } from "@/components/admin/ArticleForm";
+import {
+    AccessDenied,
+    buttonClass,
+    Card,
+    EmptyState,
+    inputClass,
+    isModeratorUser,
+    LoadingState,
+    PageHeader,
+    useToast,
+} from "@/components/admin/ui";
+import { SiteLink } from "@/components/wiki/SiteLink";
 import { useAuth } from "@/lib/auth";
-import type { Category } from "@/lib/wiki/types";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { EyeOff, FolderTree, Pencil, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-interface CategoryFormData {
+interface AdminCategory {
+    id: string;
     name: string;
     slug: string;
     description: string;
     icon: string;
-    parent_id: string;
+    order: number;
+    parent_id: string | null;
+    is_active: boolean;
+    full_path: string;
+    article_count: number;
+    total_articles: number;
 }
 
-export default function CategoriesManagementPage() {
-    const { user, isAuthenticated, isLoading, getLoginUrl } = useAuth();
-    const router = useRouter();
-    const [categories, setCategories] = useState<Category[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [formData, setFormData] = useState<CategoryFormData>({
-        name: "",
-        slug: "",
-        description: "",
-        icon: "",
-        parent_id: "",
-    });
+interface CategoryDraft {
+    name: string;
+    slug: string;
+    description: string;
+    icon: string;
+    order: number;
+    parent_id: string;
+    is_active: boolean;
+}
+
+const EMPTY: CategoryDraft = {
+    name: "",
+    slug: "",
+    description: "",
+    icon: "",
+    order: 0,
+    parent_id: "",
+    is_active: true,
+};
+
+type Result = { success: boolean; message?: string };
+
+/** Parents before children, each level in display order. */
+function ordered(categories: AdminCategory[]) {
+    const rows: { category: AdminCategory; depth: number }[] = [];
+    const walk = (parent: string | null, depth: number) => {
+        for (const category of categories.filter(
+            (item) => item.parent_id === parent,
+        )) {
+            rows.push({ category, depth });
+            walk(category.id, depth + 1);
+        }
+    };
+    walk(null, 0);
+    return rows;
+}
+
+export default function CategoriesPage() {
+    const { user } = useAuth();
+    const toast = useToast();
+    const allowed = isModeratorUser(user);
+    const [categories, setCategories] = useState<AdminCategory[] | null>(null);
+    const [editing, setEditing] = useState<string | "new" | null>(null);
+    const [draft, setDraft] = useState<CategoryDraft>(EMPTY);
+    const [slugTouched, setSlugTouched] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    const load = useCallback(async () => {
+        const data = await adminApi<Result & { categories: AdminCategory[] }>(
+            "/api/wiki/admin/categories",
+        );
+        setCategories(data.success ? data.categories : []);
+    }, []);
 
     useEffect(() => {
-        if (!isLoading && !isAuthenticated) {
-            router.push(getLoginUrl("/dashboard/categories"));
-        }
-    }, [isLoading, isAuthenticated, router, getLoginUrl]);
+        if (allowed) load().catch(() => setCategories([]));
+    }, [allowed, load]);
 
-    useEffect(() => {
-        if (!isAuthenticated) return;
-        fetchCategories();
-    }, [isAuthenticated]);
+    if (!allowed) return <AccessDenied what="Category management" />;
 
-    const fetchCategories = async () => {
-        try {
-            const res = await fetch(`${API_BASE}/api/wiki/categories`, {
-                credentials: "include",
-            });
-            const data = await res.json();
-            if (data.success) {
-                setCategories(data.categories);
-            }
-        } catch (error) {
-            console.error("Failed to fetch categories:", error);
-        } finally {
-            setLoading(false);
-        }
+    const startNew = () => {
+        setEditing("new");
+        setDraft(EMPTY);
+        setSlugTouched(false);
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        try {
-            const url = editingId
-                ? `${API_BASE}/api/wiki/admin/categories/${editingId}`
-                : `${API_BASE}/api/wiki/admin/categories`;
-
-            const method = editingId ? "PUT" : "POST";
-
-            const res = await fetch(url, {
-                method,
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                credentials: "include",
-                body: JSON.stringify(formData),
-            });
-
-            const data = await res.json();
-
-            if (data.success) {
-                await fetchCategories();
-                resetForm();
-            } else {
-                alert(data.message || "Failed to save category");
-            }
-        } catch (error) {
-            console.error("Failed to save category:", error);
-            alert("Failed to save category");
-        }
-    };
-
-    const handleDelete = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this category?")) {
-            return;
-        }
-
-        try {
-            const res = await fetch(
-                `${API_BASE}/api/wiki/admin/categories/${id}`,
-                {
-                    method: "DELETE",
-                    credentials: "include",
-                },
-            );
-
-            const data = await res.json();
-
-            if (data.success) {
-                await fetchCategories();
-            } else {
-                alert(data.message || "Failed to delete category");
-            }
-        } catch (error) {
-            console.error("Failed to delete category:", error);
-            alert("Failed to delete category");
-        }
-    };
-
-    const handleEdit = (category: Category) => {
-        setEditingId(category.id);
-        setFormData({
+    const startEdit = (category: AdminCategory) => {
+        setEditing(category.id);
+        setSlugTouched(true);
+        setDraft({
             name: category.name,
             slug: category.slug,
-            description: category.description || "",
-            icon: category.icon || "",
-            parent_id: category.parent_id || "",
-        });
-        setShowForm(true);
-    };
-
-    const resetForm = () => {
-        setFormData({
-            name: "",
-            slug: "",
-            description: "",
-            icon: "",
-            parent_id: "",
-        });
-        setEditingId(null);
-        setShowForm(false);
-    };
-
-    const handleNameChange = (name: string) => {
-        setFormData({
-            ...formData,
-            name,
-            slug: name
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, "-")
-                .replace(/^-|-$/g, ""),
+            description: category.description,
+            icon: category.icon,
+            order: category.order,
+            parent_id: category.parent_id ?? "",
+            is_active: category.is_active,
         });
     };
 
-    if (isLoading || !isAuthenticated) {
-        return (
-            <div className="flex min-h-[400px] items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-            </div>
-        );
+    const save = async (event: FormEvent) => {
+        event.preventDefault();
+        setSaving(true);
+        try {
+            const result = await adminApi<Result>(
+                editing === "new"
+                    ? "/api/wiki/admin/categories"
+                    : `/api/wiki/admin/categories/${editing}`,
+                {
+                    method: editing === "new" ? "POST" : "PUT",
+                    body: { ...draft, parent_id: draft.parent_id || null },
+                },
+            );
+            if (result.success) {
+                toast(result.message || "Category saved");
+                setEditing(null);
+                await load();
+            } else {
+                toast(result.message || "Could not save the category", "error");
+            }
+        } catch {
+            toast("Could not save the category", "error");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const remove = async (category: AdminCategory) => {
+        if (!window.confirm(`Delete “${category.name}”? This can't be undone.`))
+            return;
+        const result = await adminApi<Result>(
+            `/api/wiki/admin/categories/${category.id}`,
+            { method: "DELETE" },
+        ).catch(() => null);
+        if (result?.success) {
+            toast("Category deleted");
+            if (editing === category.id) setEditing(null);
+            await load();
+        } else {
+            toast(result?.message || "Could not delete the category", "error");
+        }
+    };
+
+    const set = <K extends keyof CategoryDraft>(
+        key: K,
+        value: CategoryDraft[K],
+    ) => setDraft((current) => ({ ...current, [key]: value }));
+
+    // A category can't move under itself or its descendants.
+    const blocked = new Set<string>();
+    if (editing && editing !== "new" && categories) {
+        const collect = (id: string) => {
+            blocked.add(id);
+            categories
+                .filter((item) => item.parent_id === id)
+                .forEach((child) => collect(child.id));
+        };
+        collect(editing);
     }
 
-    // Only allow staff/moderators
-    if (!user?.isStaff && !user?.isModerator) {
-        return (
-            <div className="rounded-lg border border-red-700/50 bg-red-900/20 p-6">
-                <h1 className="mb-2 text-xl font-bold text-white">
-                    Access Denied
-                </h1>
-                <p className="text-gray-400">
-                    You don't have permission to manage categories.
-                </p>
-            </div>
-        );
-    }
+    const rows = categories ? ordered(categories) : [];
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-semibold text-white">
-                        Manage Categories
-                    </h1>
-                    <p className="mt-1 text-gray-400">
-                        Create and organize article categories
-                    </p>
-                </div>
-                <button
-                    onClick={() => setShowForm(!showForm)}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
-                >
-                    {showForm ? "Cancel" : "+ New Category"}
-                </button>
-            </div>
+        <div>
+            <PageHeader
+                title="Categories"
+                description="Organise articles into sections. Hidden categories keep their articles but disappear from navigation."
+                actions={
+                    <button
+                        type="button"
+                        onClick={startNew}
+                        className={buttonClass("primary")}
+                    >
+                        <Plus className="h-4 w-4" />
+                        New category
+                    </button>
+                }
+            />
 
-            {showForm && (
-                <form
-                    onSubmit={handleSubmit}
-                    className="space-y-4 rounded-lg bg-gray-800/50 p-6"
-                >
-                    <h2 className="text-xl font-semibold text-white">
-                        {editingId ? "Edit Category" : "Create New Category"}
-                    </h2>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-300">
-                                Name *
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.name}
-                                onChange={(e) =>
-                                    handleNameChange(e.target.value)
-                                }
-                                required
-                                className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-300">
-                                Slug *
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.slug}
-                                onChange={(e) =>
-                                    setFormData({
-                                        ...formData,
-                                        slug: e.target.value,
-                                    })
-                                }
-                                required
-                                className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-300">
-                            Description
-                        </label>
-                        <textarea
-                            value={formData.description}
-                            onChange={(e) =>
-                                setFormData({
-                                    ...formData,
-                                    description: e.target.value,
-                                })
-                            }
-                            rows={3}
-                            className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+                <div className="min-w-0">
+                    {!categories ? (
+                        <LoadingState />
+                    ) : rows.length === 0 ? (
+                        <EmptyState
+                            icon={<FolderTree className="h-8 w-8" />}
+                            title="No categories yet"
+                            description="Create one to start organising articles."
                         />
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-300">
-                                Icon (emoji)
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.icon}
-                                onChange={(e) =>
-                                    setFormData({
-                                        ...formData,
-                                        icon: e.target.value,
-                                    })
-                                }
-                                placeholder="📚"
-                                className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-300">
-                                Parent Category
-                            </label>
-                            <select
-                                value={formData.parent_id}
-                                onChange={(e) =>
-                                    setFormData({
-                                        ...formData,
-                                        parent_id: e.target.value,
-                                    })
-                                }
-                                className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
-                            >
-                                <option value="">None (Top Level)</option>
-                                {categories
-                                    .filter(
-                                        (c) =>
-                                            !c.parent_id && c.id !== editingId,
-                                    )
-                                    .map((cat) => (
-                                        <option key={cat.id} value={cat.id}>
-                                            {cat.name}
-                                        </option>
-                                    ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="flex gap-3">
-                        <button
-                            type="submit"
-                            className="rounded-lg bg-blue-600 px-6 py-2 text-white transition-colors hover:bg-blue-700"
-                        >
-                            {editingId ? "Update" : "Create"}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={resetForm}
-                            className="rounded-lg bg-gray-700 px-6 py-2 text-white transition-colors hover:bg-gray-600"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </form>
-            )}
-
-            {loading ? (
-                <div className="flex justify-center py-12">
-                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    {categories
-                        .filter((c) => !c.parent_id)
-                        .map((category) => {
-                            const children = categories.filter(
-                                (c) => c.parent_id === category.id,
-                            );
-
-                            return (
-                                <div
-                                    key={category.id}
-                                    className="rounded-lg bg-gray-800/50 p-6"
-                                >
-                                    <div className="mb-4 flex items-start justify-between">
-                                        <div className="flex items-center gap-3">
-                                            {category.icon && (
-                                                <span className="text-2xl">
-                                                    {category.icon}
-                                                </span>
-                                            )}
-                                            <div>
-                                                <h3 className="text-lg font-semibold text-white">
-                                                    {category.name}
-                                                </h3>
-                                                <p className="text-sm text-gray-500">
-                                                    {category.slug}
-                                                </p>
-                                                {category.description && (
-                                                    <p className="mt-1 text-sm text-gray-400">
-                                                        {category.description}
-                                                    </p>
-                                                )}
-                                                <p className="mt-1 text-xs text-gray-500">
-                                                    {category.article_count}{" "}
-                                                    article
-                                                    {category.article_count !==
-                                                    1
-                                                        ? "s"
-                                                        : ""}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() =>
-                                                    handleEdit(category)
-                                                }
-                                                className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700"
-                                            >
-                                                Edit
-                                            </button>
-                                            <button
-                                                onClick={() =>
-                                                    handleDelete(category.id)
-                                                }
-                                                className="rounded bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700"
-                                            >
-                                                Delete
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {children.length > 0 && (
-                                        <div className="mt-4 border-t border-gray-700 pt-4">
-                                            <h4 className="mb-2 text-sm font-medium text-gray-400">
-                                                Subcategories:
-                                            </h4>
-                                            <div className="space-y-2">
-                                                {children.map((child) => (
-                                                    <div
-                                                        key={child.id}
-                                                        className="flex items-center justify-between rounded bg-gray-900/50 p-3"
-                                                    >
-                                                        <div className="flex items-center gap-2">
-                                                            {child.icon && (
-                                                                <span>
-                                                                    {child.icon}
+                    ) : (
+                        <Card padded={false} className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="text-left text-xs text-gray-500">
+                                    <tr className="border-b border-gray-700/60">
+                                        <th className="px-5 py-3 font-medium">
+                                            Category
+                                        </th>
+                                        <th className="px-3 py-3 text-right font-medium">
+                                            Published
+                                        </th>
+                                        <th className="px-3 py-3 text-right font-medium">
+                                            All articles
+                                        </th>
+                                        <th className="px-3 py-3 text-right font-medium">
+                                            Order
+                                        </th>
+                                        <th className="px-5 py-3" />
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-800">
+                                    {rows.map(({ category, depth }) => (
+                                        <tr
+                                            key={category.id}
+                                            className={
+                                                editing === category.id
+                                                    ? "bg-blue-600/10"
+                                                    : "hover:bg-gray-800/30"
+                                            }
+                                        >
+                                            <td className="px-5 py-3">
+                                                <div
+                                                    className="flex items-center gap-3"
+                                                    style={{
+                                                        paddingLeft: depth * 20,
+                                                    }}
+                                                >
+                                                    <span className="w-6 text-center text-lg">
+                                                        {category.icon || "📁"}
+                                                    </span>
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2 font-medium text-white">
+                                                            {category.name}
+                                                            {!category.is_active && (
+                                                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-700/60 px-2 py-0.5 text-xs font-normal text-gray-300">
+                                                                    <EyeOff className="h-3 w-3" />
+                                                                    Hidden
                                                                 </span>
                                                             )}
-                                                            <span className="text-white">
-                                                                {child.name}
-                                                            </span>
-                                                            <span className="text-sm text-gray-500">
-                                                                (
-                                                                {
-                                                                    child.article_count
-                                                                }
-                                                                )
-                                                            </span>
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <button
-                                                                onClick={() =>
-                                                                    handleEdit(
-                                                                        child,
-                                                                    )
-                                                                }
-                                                                className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
-                                                            >
-                                                                Edit
-                                                            </button>
-                                                            <button
-                                                                onClick={() =>
-                                                                    handleDelete(
-                                                                        child.id,
-                                                                    )
-                                                                }
-                                                                className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
-                                                            >
-                                                                Delete
-                                                            </button>
-                                                        </div>
+                                                        <SiteLink
+                                                            href={`/${category.full_path}`}
+                                                            className="text-xs text-gray-500 hover:text-blue-300"
+                                                        >
+                                                            /
+                                                            {category.full_path}
+                                                        </SiteLink>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-3 text-right text-gray-200 tabular-nums">
+                                                {category.article_count}
+                                            </td>
+                                            <td className="px-3 py-3 text-right text-gray-400 tabular-nums">
+                                                {category.total_articles}
+                                            </td>
+                                            <td className="px-3 py-3 text-right text-gray-400 tabular-nums">
+                                                {category.order}
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                <div className="flex justify-end gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            startEdit(category)
+                                                        }
+                                                        className={buttonClass(
+                                                            "ghost",
+                                                            "sm",
+                                                        )}
+                                                        aria-label={`Edit ${category.name}`}
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            remove(category)
+                                                        }
+                                                        disabled={
+                                                            category.total_articles >
+                                                            0
+                                                        }
+                                                        title={
+                                                            category.total_articles >
+                                                            0
+                                                                ? "Move its articles first, or hide it instead"
+                                                                : undefined
+                                                        }
+                                                        className={buttonClass(
+                                                            "ghost",
+                                                            "sm",
+                                                        )}
+                                                        aria-label={`Delete ${category.name}`}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </Card>
+                    )}
                 </div>
-            )}
+
+                <div>
+                    {editing === null ? (
+                        <Card className="text-sm text-gray-400">
+                            Select a category to edit it, or create a new one.
+                        </Card>
+                    ) : (
+                        <Card className="xl:sticky xl:top-8">
+                            <form onSubmit={save} className="space-y-4">
+                                <h2 className="font-semibold text-white">
+                                    {editing === "new"
+                                        ? "New category"
+                                        : `Edit ${draft.name || "category"}`}
+                                </h2>
+                                <div className="grid grid-cols-[72px_1fr] gap-3">
+                                    <label className="block text-sm">
+                                        <span className="mb-1 block text-gray-300">
+                                            Icon
+                                        </span>
+                                        <input
+                                            value={draft.icon}
+                                            onChange={(e) =>
+                                                set("icon", e.target.value)
+                                            }
+                                            className={`${inputClass} text-center`}
+                                            placeholder="📁"
+                                            maxLength={50}
+                                        />
+                                    </label>
+                                    <label className="block text-sm">
+                                        <span className="mb-1 block text-gray-300">
+                                            Name
+                                        </span>
+                                        <input
+                                            value={draft.name}
+                                            onChange={(e) => {
+                                                set("name", e.target.value);
+                                                if (!slugTouched)
+                                                    set(
+                                                        "slug",
+                                                        slugify(e.target.value),
+                                                    );
+                                            }}
+                                            className={inputClass}
+                                            required
+                                            maxLength={100}
+                                            autoFocus
+                                        />
+                                    </label>
+                                </div>
+                                <label className="block text-sm">
+                                    <span className="mb-1 block text-gray-300">
+                                        URL slug
+                                    </span>
+                                    <input
+                                        value={draft.slug}
+                                        onChange={(e) => {
+                                            setSlugTouched(true);
+                                            set("slug", e.target.value);
+                                        }}
+                                        className={inputClass}
+                                        maxLength={100}
+                                    />
+                                    {editing !== "new" && (
+                                        <span className="mt-1 block text-xs text-yellow-300/80">
+                                            Changing the slug changes the URL of
+                                            every article in this category.
+                                        </span>
+                                    )}
+                                </label>
+                                <label className="block text-sm">
+                                    <span className="mb-1 block text-gray-300">
+                                        Description
+                                    </span>
+                                    <textarea
+                                        value={draft.description}
+                                        onChange={(e) =>
+                                            set("description", e.target.value)
+                                        }
+                                        className={inputClass}
+                                        rows={3}
+                                    />
+                                </label>
+                                <div className="grid grid-cols-[1fr_96px] gap-3">
+                                    <label className="block text-sm">
+                                        <span className="mb-1 block text-gray-300">
+                                            Parent
+                                        </span>
+                                        <select
+                                            value={draft.parent_id}
+                                            onChange={(e) =>
+                                                set("parent_id", e.target.value)
+                                            }
+                                            className={inputClass}
+                                        >
+                                            <option value="">
+                                                None (top level)
+                                            </option>
+                                            {rows
+                                                .filter(
+                                                    ({ category }) =>
+                                                        !blocked.has(
+                                                            category.id,
+                                                        ),
+                                                )
+                                                .map(({ category, depth }) => (
+                                                    <option
+                                                        key={category.id}
+                                                        value={category.id}
+                                                    >
+                                                        {"— ".repeat(depth)}
+                                                        {category.name}
+                                                    </option>
+                                                ))}
+                                        </select>
+                                    </label>
+                                    <label className="block text-sm">
+                                        <span className="mb-1 block text-gray-300">
+                                            Order
+                                        </span>
+                                        <input
+                                            type="number"
+                                            value={draft.order}
+                                            onChange={(e) =>
+                                                set(
+                                                    "order",
+                                                    Number(e.target.value) || 0,
+                                                )
+                                            }
+                                            className={inputClass}
+                                        />
+                                    </label>
+                                </div>
+                                <label className="flex items-start gap-3 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={draft.is_active}
+                                        onChange={(e) =>
+                                            set("is_active", e.target.checked)
+                                        }
+                                        className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-900"
+                                    />
+                                    <span>
+                                        <span className="block text-gray-200">
+                                            Visible on the site
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                            Hidden categories don&apos;t appear
+                                            in navigation or the article form.
+                                        </span>
+                                    </span>
+                                </label>
+                                <div className="flex justify-end gap-2 border-t border-gray-700/60 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditing(null)}
+                                        className={buttonClass("ghost")}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={saving}
+                                        className={buttonClass("primary")}
+                                    >
+                                        {saving
+                                            ? "Saving…"
+                                            : editing === "new"
+                                              ? "Create category"
+                                              : "Save changes"}
+                                    </button>
+                                </div>
+                            </form>
+                        </Card>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

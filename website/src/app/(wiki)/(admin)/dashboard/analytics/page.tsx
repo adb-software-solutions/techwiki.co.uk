@@ -1,475 +1,534 @@
 "use client";
 
-import { useAuth } from "@/lib/auth";
+import { adminApi } from "@/components/admin/api";
 import {
-    ArrowTrendingDownIcon,
-    ArrowTrendingUpIcon,
-    ChartBarIcon,
-    ClockIcon,
-    ComputerDesktopIcon,
-    DevicePhoneMobileIcon,
-    DeviceTabletIcon,
-    EyeIcon,
-    MagnifyingGlassIcon,
-    UsersIcon,
-} from "@heroicons/react/24/outline";
-import { useEffect, useState } from "react";
+    AccessDenied,
+    Card,
+    EmptyState,
+    isAdminUser,
+    LoadingState,
+    PageHeader,
+} from "@/components/admin/ui";
+import { SiteLink } from "@/components/wiki/SiteLink";
+import { useAuth } from "@/lib/auth";
+import { ArrowDownRight, ArrowUpRight, ChartColumn } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+type Period = "24h" | "7d" | "30d" | "90d";
 
-interface AnalyticsSummary {
-    period: string;
-    total_page_views: number;
-    unique_visitors: number;
-    total_article_views: number;
-    total_searches: number;
-    avg_time_on_article: number | null;
-    bounce_rate: number | null;
-    page_views_change: number | null;
-    visitors_change: number | null;
-    article_views_change: number | null;
-    searches_change: number | null;
+const PERIODS: { value: Period; label: string }[] = [
+    { value: "24h", label: "24 hours" },
+    { value: "7d", label: "7 days" },
+    { value: "30d", label: "30 days" },
+    { value: "90d", label: "90 days" },
+];
+
+interface Ranked {
+    name: string;
+    views: number;
 }
 
-interface TopArticle {
-    rank: number;
-    article_id: string;
-    article_title: string;
-    article_slug: string;
-    category_name: string | null;
-    view_count: number;
-    unique_visitors: number;
+interface Report {
+    success: boolean;
+    bucket: "hour" | "day";
+    summary: {
+        page_views: number;
+        visitors: number;
+        article_views: number;
+        searches: number;
+        changes: Record<
+            "page_views" | "visitors" | "article_views" | "searches",
+            number | null
+        >;
+        avg_read_seconds: number | null;
+        avg_scroll_depth: number | null;
+        search_click_rate: number | null;
+        zero_result_searches: number;
+    };
+    series: { t: string; page_views: number; visitors: number }[];
+    top_pages: { path: string; views: number; visitors: number }[];
+    top_articles: {
+        article_id: string;
+        title: string;
+        url: string;
+        category: string | null;
+        views: number;
+        visitors: number;
+        avg_seconds: number | null;
+        avg_scroll: number | null;
+    }[];
+    referrers: { source: string; views: number }[];
+    devices: Ranked[];
+    browsers: Ranked[];
+    operating_systems: Ranked[];
+    searches: {
+        top: {
+            query: string;
+            count: number;
+            click_rate: number;
+            avg_results: number;
+        }[];
+        zero_results: { query: string; count: number }[];
+    };
 }
 
-interface TopSearchQuery {
-    rank: number;
-    query: string;
-    search_count: number;
-    click_through_rate: number | null;
-}
-
-interface DeviceBreakdown {
-    desktop: number;
-    mobile: number;
-    tablet: number;
-    desktop_percentage: number;
-    mobile_percentage: number;
-    tablet_percentage: number;
-}
-
-interface AnalyticsDashboard {
-    summary: AnalyticsSummary;
-    top_articles: TopArticle[];
-    top_searches: TopSearchQuery[];
-    device_breakdown: DeviceBreakdown;
-}
-
-interface RealtimeData {
+interface Realtime {
     active_users: number;
     top_pages: { path: string; count: number }[];
 }
 
-function StatCard({
-    title,
+const number = new Intl.NumberFormat("en-GB");
+
+function duration(seconds: number | null): string {
+    if (seconds === null) return "—";
+    if (seconds < 60) return `${seconds}s`;
+    return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function Change({ value }: { value: number | null }) {
+    if (value === null) {
+        return <span className="text-gray-500">No earlier data</span>;
+    }
+    const up = value >= 0;
+    const Icon = up ? ArrowUpRight : ArrowDownRight;
+    return (
+        <span
+            className={`inline-flex items-center gap-0.5 ${up ? "text-emerald-300" : "text-red-300"}`}
+        >
+            <Icon className="h-3.5 w-3.5" aria-hidden />
+            {up ? "+" : ""}
+            {value}%<span className="ml-1 text-gray-500">vs previous</span>
+        </span>
+    );
+}
+
+function Stat({
+    label,
     value,
-    change,
-    icon: Icon,
-    format = "number",
+    footer,
 }: {
-    title: string;
-    value: number | null;
-    change: number | null;
-    icon: React.ElementType;
-    format?: "number" | "time" | "percentage";
+    label: string;
+    value: string;
+    footer: ReactNode;
 }) {
-    const formatValue = (val: number | null) => {
-        if (val === null) return "—";
-        if (format === "time") {
-            const mins = Math.floor(val / 60);
-            const secs = Math.round(val % 60);
-            return `${mins}m ${secs}s`;
-        }
-        if (format === "percentage") {
-            return `${val.toFixed(1)}%`;
-        }
-        return val.toLocaleString();
-    };
-
-    const isPositive = change !== null && change >= 0;
-
     return (
-        <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
-            <div className="flex items-start justify-between">
-                <div>
-                    <p className="text-sm text-gray-400">{title}</p>
-                    <p className="mt-1 text-3xl font-bold text-white">
-                        {formatValue(value)}
-                    </p>
-                </div>
-                <div className="rounded-lg bg-blue-500/20 p-3">
-                    <Icon className="h-6 w-6 text-blue-400" />
-                </div>
+        <Card>
+            <div className="text-sm text-gray-400">{label}</div>
+            <div className="mt-1 text-3xl font-semibold text-white tabular-nums">
+                {value}
             </div>
-            {change !== null && (
-                <div className="mt-4 flex items-center gap-1">
-                    {isPositive ? (
-                        <ArrowTrendingUpIcon className="h-4 w-4 text-green-400" />
-                    ) : (
-                        <ArrowTrendingDownIcon className="h-4 w-4 text-red-400" />
-                    )}
-                    <span
-                        className={`text-sm ${isPositive ? "text-green-400" : "text-red-400"}`}
-                    >
-                        {isPositive ? "+" : ""}
-                        {change.toFixed(1)}%
-                    </span>
-                    <span className="text-sm text-gray-500">
-                        vs previous period
-                    </span>
-                </div>
-            )}
-        </div>
+            <div className="mt-2 text-xs">{footer}</div>
+        </Card>
     );
 }
 
-function DeviceStats({ breakdown }: { breakdown: DeviceBreakdown }) {
-    const total = breakdown.desktop + breakdown.mobile + breakdown.tablet || 1;
-
-    return (
-        <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
-            <h3 className="mb-4 text-lg font-semibold text-white">
-                Device Breakdown
-            </h3>
-            <div className="space-y-4">
-                <div>
-                    <div className="mb-1 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <ComputerDesktopIcon className="h-4 w-4 text-gray-400" />
-                            <span className="text-sm text-gray-300">
-                                Desktop
-                            </span>
-                        </div>
-                        <span className="text-sm text-white">
-                            {breakdown.desktop.toLocaleString()} (
-                            {breakdown.desktop_percentage.toFixed(1)}%)
-                        </span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-gray-700">
-                        <div
-                            className="h-full rounded-full bg-blue-500"
-                            style={{
-                                width: `${breakdown.desktop_percentage}%`,
-                            }}
-                        />
-                    </div>
-                </div>
-                <div>
-                    <div className="mb-1 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <DevicePhoneMobileIcon className="h-4 w-4 text-gray-400" />
-                            <span className="text-sm text-gray-300">
-                                Mobile
-                            </span>
-                        </div>
-                        <span className="text-sm text-white">
-                            {breakdown.mobile.toLocaleString()} (
-                            {breakdown.mobile_percentage.toFixed(1)}%)
-                        </span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-gray-700">
-                        <div
-                            className="h-full rounded-full bg-green-500"
-                            style={{ width: `${breakdown.mobile_percentage}%` }}
-                        />
-                    </div>
-                </div>
-                <div>
-                    <div className="mb-1 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <DeviceTabletIcon className="h-4 w-4 text-gray-400" />
-                            <span className="text-sm text-gray-300">
-                                Tablet
-                            </span>
-                        </div>
-                        <span className="text-sm text-white">
-                            {breakdown.tablet.toLocaleString()} (
-                            {breakdown.tablet_percentage.toFixed(1)}%)
-                        </span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-gray-700">
-                        <div
-                            className="h-full rounded-full bg-yellow-500"
-                            style={{ width: `${breakdown.tablet_percentage}%` }}
-                        />
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-export default function AnalyticsDashboardPage() {
-    const { user, isLoading: authLoading } = useAuth();
-    const [period, setPeriod] = useState<"today" | "week" | "month">("week");
-    const [dashboard, setDashboard] = useState<AnalyticsDashboard | null>(null);
-    const [realtime, setRealtime] = useState<RealtimeData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    // Check if user is admin
-    const isAdmin = user?.isStaff || user?.isSuperuser;
-
-    useEffect(() => {
-        if (authLoading) return;
-        if (!isAdmin) {
-            setLoading(false);
-            return;
-        }
-
-        async function fetchData() {
-            try {
-                setLoading(true);
-                const [dashboardRes, realtimeRes] = await Promise.all([
-                    fetch(
-                        `${API_BASE}/api/analytics/dashboard?period=${period}`,
-                        {
-                            credentials: "include",
-                        },
-                    ),
-                    fetch(`${API_BASE}/api/analytics/realtime`, {
-                        credentials: "include",
-                    }),
-                ]);
-
-                if (dashboardRes.ok) {
-                    setDashboard(await dashboardRes.json());
-                } else if (dashboardRes.status === 403) {
-                    setError("Admin access required");
-                }
-
-                if (realtimeRes.ok) {
-                    setRealtime(await realtimeRes.json());
-                }
-
-                setLoading(false);
-            } catch (err) {
-                console.error("Failed to fetch analytics:", err);
-                setError("Failed to load analytics");
-                setLoading(false);
-            }
-        }
-
-        fetchData();
-
-        // Refresh realtime data every 30 seconds
-        const interval = setInterval(async () => {
-            try {
-                const res = await fetch(`${API_BASE}/api/analytics/realtime`, {
-                    credentials: "include",
-                });
-                if (res.ok) {
-                    setRealtime(await res.json());
-                }
-            } catch (err) {
-                console.error("Failed to refresh realtime:", err);
-            }
-        }, 30000);
-
-        return () => clearInterval(interval);
-    }, [period, isAdmin, authLoading]);
-
-    if (authLoading || loading) {
-        return (
-            <div className="flex items-center justify-center py-16">
-                <div className="h-8 w-8 animate-spin rounded-full border-t-2 border-b-2 border-blue-500" />
-            </div>
+function TrafficChart({
+    series,
+    bucket,
+}: {
+    series: Report["series"];
+    bucket: Report["bucket"];
+}) {
+    const [hover, setHover] = useState<number | null>(null);
+    const max = Math.max(1, ...series.map((point) => point.page_views));
+    const label = (iso: string) =>
+        new Date(iso).toLocaleString(
+            "en-GB",
+            bucket === "hour"
+                ? { hour: "2-digit", minute: "2-digit" }
+                : { day: "numeric", month: "short" },
         );
-    }
-
-    if (!isAdmin) {
-        return (
-            <div className="py-16 text-center">
-                <h1 className="mb-2 text-2xl font-bold text-white">
-                    Access Denied
-                </h1>
-                <p className="text-gray-400">
-                    You need admin privileges to view analytics.
-                </p>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="py-16 text-center">
-                <h1 className="mb-2 text-2xl font-bold text-white">Error</h1>
-                <p className="text-red-400">{error}</p>
-            </div>
-        );
-    }
+    const tickEvery = Math.max(1, Math.ceil(series.length / 8));
+    const active = hover === null ? null : series[hover];
 
     return (
         <div>
-            <div className="mb-8 flex items-center justify-between">
-                <h1 className="text-2xl font-semibold text-white">
-                    Analytics Dashboard
-                </h1>
-                <div className="flex items-center gap-2">
-                    {realtime && (
-                        <div className="flex items-center gap-2 rounded-lg bg-green-500/20 px-3 py-1.5 text-sm text-green-400">
-                            <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
-                            {realtime.active_users} active now
-                        </div>
-                    )}
-                    <select
-                        value={period}
-                        onChange={(e) =>
-                            setPeriod(
-                                e.target.value as "today" | "week" | "month",
-                            )
-                        }
-                        className="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-white"
-                    >
-                        <option value="today">Today</option>
-                        <option value="week">Last 7 Days</option>
-                        <option value="month">Last 30 Days</option>
-                    </select>
+            <div className="mb-3 flex h-5 items-baseline justify-between gap-4 text-sm">
+                <span className="text-gray-400">Page views per {bucket}</span>
+                {active && (
+                    <span className="text-gray-300 tabular-nums">
+                        <span className="text-white">{label(active.t)}</span>
+                        {" · "}
+                        {number.format(active.page_views)} views
+                        {" · "}
+                        {number.format(active.visitors)} visitors
+                    </span>
+                )}
+            </div>
+            <div className="relative h-56">
+                {[0.25, 0.5, 0.75].map((line) => (
+                    <div
+                        key={line}
+                        className="absolute inset-x-0 border-t border-gray-700/40"
+                        style={{ bottom: `${line * 100}%` }}
+                    />
+                ))}
+                <div className="absolute top-0 right-0 text-[11px] text-gray-500 tabular-nums">
+                    {number.format(max)}
+                </div>
+                <div
+                    className="absolute inset-0 flex items-end gap-[2px] border-b border-gray-600"
+                    onMouseLeave={() => setHover(null)}
+                >
+                    {series.map((point, index) => (
+                        <button
+                            key={point.t}
+                            type="button"
+                            className="group flex h-full min-w-0 flex-1 items-end focus:outline-none"
+                            onMouseEnter={() => setHover(index)}
+                            onFocus={() => setHover(index)}
+                            aria-label={`${label(point.t)}: ${point.page_views} page views, ${point.visitors} visitors`}
+                        >
+                            <span
+                                className={`block w-full rounded-t-[4px] transition-colors ${hover === index ? "bg-blue-300" : "bg-blue-500"}`}
+                                style={{
+                                    height: `${(point.page_views / max) * 100}%`,
+                                    minHeight: point.page_views ? 2 : 0,
+                                }}
+                            />
+                        </button>
+                    ))}
                 </div>
             </div>
+            <div className="mt-2 flex text-[11px] text-gray-500">
+                {series.map((point, index) => (
+                    <span
+                        key={point.t}
+                        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap"
+                    >
+                        {index % tickEvery === 0 ? label(point.t) : ""}
+                    </span>
+                ))}
+            </div>
+        </div>
+    );
+}
 
-            {dashboard && (
-                <>
-                    {/* Summary Stats */}
-                    <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <StatCard
-                            title="Page Views"
-                            value={dashboard.summary.total_page_views}
-                            change={dashboard.summary.page_views_change}
-                            icon={EyeIcon}
+function RankedList({
+    title,
+    rows,
+    empty,
+}: {
+    title: string;
+    rows: { key: string; label: ReactNode; value: number; detail?: string }[];
+    empty: string;
+}) {
+    const max = Math.max(1, ...rows.map((row) => row.value));
+    return (
+        <Card>
+            <h2 className="mb-4 font-semibold text-white">{title}</h2>
+            {rows.length === 0 ? (
+                <p className="text-sm text-gray-500">{empty}</p>
+            ) : (
+                <ul className="space-y-2.5">
+                    {rows.map((row) => (
+                        <li key={row.key}>
+                            <div className="flex items-baseline justify-between gap-3 text-sm">
+                                <span className="min-w-0 truncate text-gray-200">
+                                    {row.label}
+                                </span>
+                                <span className="shrink-0 text-gray-300 tabular-nums">
+                                    {number.format(row.value)}
+                                    {row.detail && (
+                                        <span className="ml-2 text-xs text-gray-500">
+                                            {row.detail}
+                                        </span>
+                                    )}
+                                </span>
+                            </div>
+                            <div className="mt-1 h-1.5 rounded-full bg-gray-800">
+                                <div
+                                    className="h-full rounded-full bg-blue-500/70"
+                                    style={{
+                                        width: `${(row.value / max) * 100}%`,
+                                    }}
+                                />
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </Card>
+    );
+}
+
+export default function AnalyticsPage() {
+    const { user } = useAuth();
+    const admin = isAdminUser(user);
+    const [period, setPeriod] = useState<Period>("7d");
+    const [report, setReport] = useState<Report | null>(null);
+    const [realtime, setRealtime] = useState<Realtime | null>(null);
+    const [failed, setFailed] = useState(false);
+
+    useEffect(() => {
+        if (!admin) return;
+        let cancelled = false;
+        setReport(null);
+        setFailed(false);
+        adminApi<Report>(`/api/analytics/dashboard?period=${period}`)
+            .then((data) => {
+                if (cancelled) return;
+                if (data.success) setReport(data);
+                else setFailed(true);
+            })
+            .catch(() => !cancelled && setFailed(true));
+        return () => {
+            cancelled = true;
+        };
+    }, [admin, period]);
+
+    useEffect(() => {
+        if (!admin) return;
+        const load = () =>
+            adminApi<Realtime>("/api/analytics/realtime")
+                .then(setRealtime)
+                .catch(() => {});
+        load();
+        const interval = setInterval(load, 30000);
+        return () => clearInterval(interval);
+    }, [admin]);
+
+    if (!admin) return <AccessDenied what="Analytics" />;
+
+    const summary = report?.summary;
+
+    return (
+        <div>
+            <PageHeader
+                title="Analytics"
+                description="Visits to the public site, excluding bots and admin pages."
+                actions={
+                    <>
+                        {realtime && (
+                            <span className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+                                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                                {realtime.active_users} active in the last 30
+                                min
+                            </span>
+                        )}
+                        <div
+                            className="inline-flex rounded-lg border border-gray-700 bg-gray-900/60 p-0.5"
+                            role="tablist"
+                            aria-label="Period"
+                        >
+                            {PERIODS.map((option) => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={period === option.value}
+                                    onClick={() => setPeriod(option.value)}
+                                    className={`rounded-md px-3 py-1.5 text-sm transition-colors ${period === option.value ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"}`}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                }
+            />
+
+            {failed ? (
+                <EmptyState
+                    title="Analytics could not be loaded"
+                    description="Try again in a moment."
+                />
+            ) : !report || !summary ? (
+                <LoadingState />
+            ) : summary.page_views === 0 ? (
+                <EmptyState
+                    icon={<ChartColumn className="h-8 w-8" />}
+                    title="No visits recorded in this period"
+                    description="Visits are recorded from the public site as people browse it. Try a longer period."
+                />
+            ) : (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+                        <Stat
+                            label="Page views"
+                            value={number.format(summary.page_views)}
+                            footer={
+                                <Change value={summary.changes.page_views} />
+                            }
                         />
-                        <StatCard
-                            title="Unique Visitors"
-                            value={dashboard.summary.unique_visitors}
-                            change={dashboard.summary.visitors_change}
-                            icon={UsersIcon}
+                        <Stat
+                            label="Visitors"
+                            value={number.format(summary.visitors)}
+                            footer={<Change value={summary.changes.visitors} />}
                         />
-                        <StatCard
-                            title="Article Views"
-                            value={dashboard.summary.total_article_views}
-                            change={dashboard.summary.article_views_change}
-                            icon={ChartBarIcon}
+                        <Stat
+                            label="Article reads"
+                            value={number.format(summary.article_views)}
+                            footer={
+                                <Change value={summary.changes.article_views} />
+                            }
                         />
-                        <StatCard
-                            title="Searches"
-                            value={dashboard.summary.total_searches}
-                            change={dashboard.summary.searches_change}
-                            icon={MagnifyingGlassIcon}
+                        <Stat
+                            label="Avg. reading time"
+                            value={duration(summary.avg_read_seconds)}
+                            footer={
+                                <span className="text-gray-500">
+                                    {summary.avg_scroll_depth === null
+                                        ? "Scroll depth not recorded yet"
+                                        : `Readers scroll ${summary.avg_scroll_depth}% on average`}
+                                </span>
+                            }
                         />
                     </div>
 
-                    <div className="mb-8 grid gap-6 lg:grid-cols-3">
-                        {/* Avg Time on Article */}
-                        <StatCard
-                            title="Avg. Time on Article"
-                            value={dashboard.summary.avg_time_on_article}
-                            change={null}
-                            icon={ClockIcon}
-                            format="time"
+                    <Card>
+                        <TrafficChart
+                            series={report.series}
+                            bucket={report.bucket}
                         />
-                        {/* Device Breakdown */}
-                        <div className="lg:col-span-2">
-                            <DeviceStats
-                                breakdown={dashboard.device_breakdown}
+                    </Card>
+
+                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                        <Card
+                            padded={false}
+                            className="min-w-0 overflow-hidden"
+                        >
+                            <h2 className="px-5 pt-5 pb-3 font-semibold text-white">
+                                Top articles
+                            </h2>
+                            {report.top_articles.length === 0 ? (
+                                <p className="px-5 pb-5 text-sm text-gray-500">
+                                    No article reads in this period.
+                                </p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="text-left text-xs text-gray-500">
+                                            <tr className="border-b border-gray-700/60">
+                                                <th className="w-full px-5 py-2 font-medium">
+                                                    Article
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                                                    Reads
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                                                    Readers
+                                                </th>
+                                                <th className="px-5 py-2 text-right font-medium whitespace-nowrap">
+                                                    Avg. time
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-800">
+                                            {report.top_articles.map(
+                                                (article) => (
+                                                    <tr
+                                                        key={article.article_id}
+                                                    >
+                                                        <td className="max-w-0 px-5 py-2.5">
+                                                            <SiteLink
+                                                                href={
+                                                                    article.url
+                                                                }
+                                                                className="block truncate text-gray-100 hover:text-blue-300"
+                                                            >
+                                                                {article.title}
+                                                            </SiteLink>
+                                                            {article.category && (
+                                                                <span className="text-xs text-gray-500">
+                                                                    {
+                                                                        article.category
+                                                                    }
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2.5 text-right text-gray-200 tabular-nums">
+                                                            {number.format(
+                                                                article.views,
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2.5 text-right text-gray-400 tabular-nums">
+                                                            {number.format(
+                                                                article.visitors,
+                                                            )}
+                                                        </td>
+                                                        <td className="px-5 py-2.5 text-right text-gray-400 tabular-nums">
+                                                            {duration(
+                                                                article.avg_seconds,
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ),
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </Card>
+                        <RankedList
+                            title="Top pages"
+                            empty="No page views in this period."
+                            rows={report.top_pages.map((page) => ({
+                                key: page.path,
+                                label: page.path,
+                                value: page.views,
+                                detail: `${number.format(page.visitors)} visitors`,
+                            }))}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-4">
+                        <RankedList
+                            title="Sources"
+                            empty="No referrers recorded."
+                            rows={report.referrers.map((row) => ({
+                                key: row.source,
+                                label: row.source,
+                                value: row.views,
+                            }))}
+                        />
+                        {(
+                            [
+                                ["Devices", report.devices],
+                                ["Browsers", report.browsers],
+                                ["Operating systems", report.operating_systems],
+                            ] as const
+                        ).map(([title, rows]) => (
+                            <RankedList
+                                key={title}
+                                title={title}
+                                empty="Nothing recorded."
+                                rows={rows.map((row) => ({
+                                    key: row.name,
+                                    // Device types arrive lowercase.
+                                    label:
+                                        title === "Devices"
+                                            ? row.name.charAt(0).toUpperCase() +
+                                              row.name.slice(1)
+                                            : row.name,
+                                    value: row.views,
+                                }))}
                             />
-                        </div>
+                        ))}
                     </div>
 
-                    <div className="grid gap-6 lg:grid-cols-2">
-                        {/* Top Articles */}
-                        <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
-                            <h3 className="mb-4 text-lg font-semibold text-white">
-                                Top Articles
-                            </h3>
-                            {dashboard.top_articles.length > 0 ? (
-                                <div className="space-y-3">
-                                    {dashboard.top_articles.map((article) => (
-                                        <div
-                                            key={article.article_id}
-                                            className="flex items-center gap-4"
-                                        >
-                                            <span className="w-8 text-xl font-bold text-gray-500">
-                                                #{article.rank}
-                                            </span>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate text-white">
-                                                    {article.article_title}
-                                                </p>
-                                                {article.category_name && (
-                                                    <p className="text-sm text-gray-400">
-                                                        {article.category_name}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-white">
-                                                    {article.view_count.toLocaleString()}
-                                                </p>
-                                                <p className="text-sm text-gray-400">
-                                                    {article.unique_visitors.toLocaleString()}{" "}
-                                                    unique
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-gray-400">No data yet</p>
-                            )}
-                        </div>
-
-                        {/* Top Searches */}
-                        <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
-                            <h3 className="mb-4 text-lg font-semibold text-white">
-                                Top Searches
-                            </h3>
-                            {dashboard.top_searches.length > 0 ? (
-                                <div className="space-y-3">
-                                    {dashboard.top_searches.map((search) => (
-                                        <div
-                                            key={`${search.rank}-${search.query}`}
-                                            className="flex items-center gap-4"
-                                        >
-                                            <span className="w-8 text-xl font-bold text-gray-500">
-                                                #{search.rank}
-                                            </span>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate text-white">
-                                                    &quot;{search.query}&quot;
-                                                </p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-white">
-                                                    {search.search_count.toLocaleString()}
-                                                </p>
-                                                {search.click_through_rate !==
-                                                    null && (
-                                                    <p className="text-sm text-gray-400">
-                                                        {search.click_through_rate.toFixed(
-                                                            1,
-                                                        )}
-                                                        % CTR
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-gray-400">No searches yet</p>
-                            )}
-                        </div>
+                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                        <RankedList
+                            title={`Searches · ${number.format(summary.searches)}${summary.search_click_rate === null ? "" : ` · ${summary.search_click_rate}% led to a click`}`}
+                            empty="No searches in this period."
+                            rows={report.searches.top.map((row) => ({
+                                key: row.query,
+                                label: `“${row.query}”`,
+                                value: row.count,
+                                detail: `${row.click_rate}% clicked`,
+                            }))}
+                        />
+                        <RankedList
+                            title={`Searches with no results · ${number.format(summary.zero_result_searches)}`}
+                            empty="Every search found something."
+                            rows={report.searches.zero_results.map((row) => ({
+                                key: row.query,
+                                label: `“${row.query}”`,
+                                value: row.count,
+                            }))}
+                        />
                     </div>
-                </>
+                </div>
             )}
         </div>
     );

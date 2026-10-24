@@ -102,6 +102,18 @@ def _published_article(article_id: str | None) -> Article | None:
         return None
 
 
+def _article_for_path(path: str) -> Article | None:
+    """The published article a site path shows, e.g. /linux/networking/ufw-basics."""
+    parts = [part for part in path.split("?", 1)[0].split("/") if part]
+    if len(parts) < 2:
+        return None
+    wanted = "/" + "/".join(parts)
+    candidates = Article.objects.select_related("category", "category__parent").filter(
+        slug=parts[-1], status=ArticleStatus.PUBLISHED
+    )
+    return next((article for article in candidates if article.full_url == wanted), None)
+
+
 # =============================================================================
 # Public tracking endpoints (no auth required)
 # =============================================================================
@@ -130,7 +142,7 @@ def track_page_view(request: HttpRequest, data: PageViewRequest) -> dict[str, st
         os=ua_info["os"],
     )
 
-    article = _published_article(data.article_id)
+    article = _published_article(data.article_id) or _article_for_path(data.path)
     if article:
         ArticleView.objects.create(
             article=article,

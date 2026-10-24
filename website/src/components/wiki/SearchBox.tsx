@@ -1,6 +1,7 @@
 "use client";
 
 import { analytics } from "@/lib/analytics";
+import { trackSearch, trackSearchClick } from "@/lib/analytics/tracking";
 import { searchArticles } from "@/lib/wiki/api";
 import type { ArticleSummary, Category } from "@/lib/wiki/types";
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -104,6 +105,7 @@ export function SearchResults({ categories }: SearchResultsProps) {
     const [totalPages, setTotalPages] = useState(0);
     const [isPending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
+    const searchIdRef = useRef<string | null>(null);
 
     const router = useRouter();
 
@@ -129,8 +131,17 @@ export function SearchResults({ categories }: SearchResultsProps) {
                 setTotalPages(Math.ceil(response.total / 20));
                 setError(null);
 
-                // Track search analytics
+                // Track search analytics. Later pages are the same search.
                 analytics.trackSearch(query, response.total);
+                if (page === 1) {
+                    searchIdRef.current = null;
+                    trackSearch(query, response.total, {
+                        category: categoryFilter,
+                        type: typeFilter,
+                    }).then((id) => {
+                        searchIdRef.current = id;
+                    });
+                }
             } else {
                 setError("Search failed");
             }
@@ -254,8 +265,21 @@ export function SearchResults({ categories }: SearchResultsProps) {
             {/* Results */}
             {results.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {results.map((article) => (
-                        <ArticleCard key={article.id} article={article} />
+                    {results.map((article, index) => (
+                        <div
+                            key={article.id}
+                            onClickCapture={() => {
+                                if (searchIdRef.current) {
+                                    trackSearchClick(
+                                        searchIdRef.current,
+                                        article.id,
+                                        (page - 1) * 20 + index + 1,
+                                    );
+                                }
+                            }}
+                        >
+                            <ArticleCard article={article} />
+                        </div>
                     ))}
                 </div>
             ) : !isPending && query ? (
