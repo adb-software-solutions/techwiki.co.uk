@@ -79,6 +79,13 @@ class ArticleStatus(models.TextChoices):
     ARCHIVED = "archived", "Archived"
 
 
+class ArticleSource(models.TextChoices):
+    """Where an article was created."""
+
+    WEB = "web", "Website"
+    AUTHORING = "authoring", "Authoring API"
+
+
 class ArticleType(models.TextChoices):
     """Type of article."""
 
@@ -153,6 +160,12 @@ class Article(models.Model):
         related_name="moderated_articles",
     )
     moderated_at = models.DateTimeField(null=True, blank=True)
+    source = models.CharField(
+        max_length=20,
+        choices=ArticleSource.choices,
+        default=ArticleSource.WEB,
+        db_index=True,
+    )
 
     # SEO
     meta_title = models.CharField(max_length=60, blank=True, default="")

@@ -17,7 +17,15 @@ from ninja.security import HttpBearer
 
 from apps.wiki.authoring_models import AuthoringApiToken, AuthoringAuditLog
 from apps.wiki.compatibility import ArticleCompatibility, VerificationStatus
-from apps.wiki.models import Article, ArticleRevision, ArticleStatus, ArticleType, Category, Tag
+from apps.wiki.models import (
+    Article,
+    ArticleRevision,
+    ArticleSource,
+    ArticleStatus,
+    ArticleType,
+    Category,
+    Tag,
+)
 from apps.wiki.views import article_to_response, article_to_summary, render_markdown
 
 ARTICLE_READ = "articles:read"
@@ -370,6 +378,7 @@ def authoring_create_article(
             category=category,
             author=credential.user,
             status=ArticleStatus.DRAFT,
+            source=ArticleSource.AUTHORING,
             meta_title=(data.meta_title.strip() or title[:60]),
             meta_description=(data.meta_description.strip() or data.excerpt.strip()[:160]),
             allow_comments=data.allow_comments,
