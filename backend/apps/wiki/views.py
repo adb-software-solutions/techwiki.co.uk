@@ -654,16 +654,6 @@ def update_article(
             return 200, {"success": False, "message": "Permission denied"}
 
         with transaction.atomic():
-            # Store old version
-            ArticleRevision.objects.create(
-                article=article,
-                version=article.version,
-                title=article.title,
-                content=article.content,
-                author=request.user,
-                change_summary=data.change_summary or f"Update to version {article.version + 1}",
-            )
-
             # Update fields
             if data.title is not None:
                 article.title = data.title
@@ -700,6 +690,17 @@ def update_article(
                 category = Category.objects.get(id=data.category_id)
                 if not article.categories.filter(id=data.category_id).exists():
                     article.categories.add(category)
+
+            # Revisions record each version's content, matching create_article and the
+            # authoring API, so the initial revision is version 1.
+            ArticleRevision.objects.create(
+                article=article,
+                version=article.version,
+                title=article.title,
+                content=article.content,
+                author=request.user,
+                change_summary=data.change_summary or f"Update to version {article.version}",
+            )
 
         return 200, {
             "success": True,
