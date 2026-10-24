@@ -316,12 +316,14 @@ def _series(
         .values("bucket")
         .annotate(views=Count("id"), visitors=Count("session_id", distinct=True))
     )
-    by_bucket = {timezone.localtime(row["bucket"]): row for row in rows}
+    by_bucket: dict[datetime, tuple[int, int]] = {
+        timezone.localtime(row["bucket"]): (row["views"], row["visitors"]) for row in rows
+    }
     return [
         {
             "t": moment.isoformat(),
-            "page_views": by_bucket.get(moment, {}).get("views", 0),
-            "visitors": by_bucket.get(moment, {}).get("visitors", 0),
+            "page_views": by_bucket.get(moment, (0, 0))[0],
+            "visitors": by_bucket.get(moment, (0, 0))[1],
         }
         for moment in _bucket_starts(start, end, bucket)
     ]
