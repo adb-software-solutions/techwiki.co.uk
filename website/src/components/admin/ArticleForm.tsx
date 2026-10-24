@@ -235,17 +235,21 @@ export function ArticleFormFields({
 
     const createCategory = async () => {
         if (!newCategory?.name.trim()) return;
-        const form = new FormData();
-        form.append("name", newCategory.name.trim());
-        form.append("icon", newCategory.icon.trim() || "📁");
-        const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/wiki/admin/categories`,
-            { method: "POST", credentials: "include", body: form },
-        );
-        const data = await response.json();
-        if (data.success && data.category) {
-            setCategories((prev) => [...prev, data.category]);
-            set("categoryIds", [...values.categoryIds, data.category.id]);
+        const data = await adminApi<{
+            success: boolean;
+            message?: string;
+            category?: Category;
+        }>("/api/wiki/admin/categories", {
+            method: "POST",
+            body: {
+                name: newCategory.name.trim(),
+                icon: newCategory.icon.trim() || "📁",
+            },
+        });
+        const created = data.category;
+        if (data.success && created) {
+            setCategories((prev) => [...prev, created]);
+            set("categoryIds", [...values.categoryIds, created.id]);
             setNewCategory(null);
         } else {
             toast(data.message || "Could not create the category", "error");

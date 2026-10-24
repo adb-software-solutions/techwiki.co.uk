@@ -70,6 +70,11 @@ class TrackingTests(AnalyticsTestCase):
         self.article.refresh_from_db()
         self.assertEqual(self.article.view_count, 1)
 
+    def test_article_is_found_from_its_path(self) -> None:
+        self.post("/track/pageview", {"path": "/linux/fix-it", "session_id": "s1"})
+        self.post("/track/pageview", {"path": "/other/fix-it", "session_id": "s1"})
+        self.assertEqual(ArticleView.objects.get().article, self.article)
+
     def test_draft_article_id_is_not_counted(self) -> None:
         self.article.status = ArticleStatus.DRAFT
         self.article.save()

@@ -2,6 +2,7 @@ import { SearchBox } from "@/components/wiki/SearchBox";
 import { UserMenu } from "@/components/wiki/UserMenu";
 import { SiteLink as Link } from "@/components/wiki/SiteLink";
 import { GoogleAdSenseScript } from "@/lib/analytics/AdSense";
+import { SiteAnalytics } from "@/lib/analytics/tracking";
 import { getCategories } from "@/lib/wiki/api";
 
 interface WikiLayoutProps {
@@ -21,6 +22,8 @@ export default async function SiteLayout({ children }: WikiLayoutProps) {
         <>
             {/* Admin pages never load AdSense; see SiteLink. */}
             <GoogleAdSenseScript />
+            {/* Internal analytics, public pages only: admin visits are not counted. */}
+            <SiteAnalytics />
             <div className="min-h-screen bg-[#1c324a]">
                 {/* Navigation */}
                 <nav className="sticky top-0 z-50 border-b border-gray-700/50 bg-[#1c324a]/95 backdrop-blur">
