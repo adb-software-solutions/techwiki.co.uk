@@ -149,8 +149,12 @@ class OAuthDynamicClientRegistrationTests(TestCase):
 
     def test_registration_rejects_unsafe_redirect_uris(self) -> None:
         for uris in (
-            ["https://attacker.example/callback"],
             ["http://evil.example/callback"],
+            ["https://user:pass@evil.example/callback"],
+            ["https://evil.example/callback#frag"],
+            ["https:///callback"],
+            ["javascript:alert(1)"],
+            ["cursor://callback"],
             ["http://user:pass@localhost/callback"],
             ["http://localhost/callback#frag"],
             [],
@@ -163,11 +167,35 @@ class OAuthDynamicClientRegistrationTests(TestCase):
                 self.assertEqual(response.json()["error"], "invalid_redirect_uri")
         self.assertFalse(AuthoringOAuthClient.objects.exists())
 
-    def test_registration_accepts_configured_web_redirect(self) -> None:
-        callback = "https://claude.ai/api/mcp/auth_callback"
-        with patch.dict(os.environ, {"TECHWIKI_AUTHORING_OAUTH_REDIRECT_URIS": callback}):
-            response = self._register({"redirect_uris": [callback]})
-        self.assertEqual(response.status_code, 201)
+    def test_registration_accepts_https_redirects(self) -> None:
+        for callback in (
+            "https://chatgpt.com/connector_platform_oauth_redirect",
+            "https://claude.ai/api/mcp/auth_callback",
+        ):
+            with self.subTest(callback=callback):
+                response = self._register({"redirect_uris": [callback]})
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(response.json()["redirect_uris"], [callback])
+
+    def test_consent_leads_with_callback_host(self) -> None:
+        callback = "https://chatgpt.com/connector_platform_oauth_redirect"
+        client_id = self._register(
+            {"client_name": "Claude Code", "redirect_uris": [callback]}
+        ).json()["client_id"]
+        self.client.force_login(self.user)
+        query = urlencode(
+            {
+                "client_id": client_id,
+                "redirect_uri": callback,
+                "response_type": "code",
+                "resource": RESOURCE,
+                "code_challenge": self.challenge,
+                "code_challenge_method": "S256",
+            }
+        )
+        consent = self.client.get(f"/oauth/authorize?{query}")
+        self.assertContains(consent, "Access will be sent to <strong>chatgpt.com</strong>")
+        self.assertContains(consent, "<em>Claude Code</em>")
 
     def test_registration_rejects_invalid_metadata(self) -> None:
         cases: list[object] = [

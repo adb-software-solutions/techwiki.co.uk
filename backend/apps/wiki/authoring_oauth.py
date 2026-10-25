@@ -175,6 +175,7 @@ def oauth_authorize(request: HttpRequest) -> HttpResponse:
         return redirect(f"{redirect_uri}?{urlencode(params)}")
 
     csrf_token = get_token(request)
+    redirect_host = urlparse(redirect_uri).hostname or redirect_uri
     scope_items = "".join(f"<li><code>{escape(scope)}</code></li>" for scope in scopes)
     html = f"""<!doctype html>
 <html lang="en">
@@ -182,8 +183,9 @@ def oauth_authorize(request: HttpRequest) -> HttpResponse:
 <title>Authorize TechWiki Authoring</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 20px;line-height:1.5">
 <h1>Authorize TechWiki Authoring</h1>
-<p><strong>{escape(client.name)}</strong> is requesting access to your private TechWiki authoring tools.</p>
-<p>After approval you will be returned to <code>{escape(redirect_uri)}</code>.</p>
+<p style="font-size:1.25em">Access will be sent to <strong>{escape(redirect_host)}</strong></p>
+<p>The client calls itself <em>{escape(client.name)}</em>. This name is self-reported, so only approve if you started this sign-in from {escape(redirect_host)}.</p>
+<p>Callback: <code>{escape(redirect_uri)}</code></p>
 <p>This authorization is restricted to the configured TechWiki owner account. Publishing is not included.</p>
 <ul>{scope_items}</ul>
 <form method="post">
@@ -222,23 +224,17 @@ def _authenticated_client(request: HttpRequest) -> AuthoringOAuthClient | None:
     return client
 
 
-def _allowed_registration_redirect_uris() -> set[str]:
-    configured = os.environ.get("TECHWIKI_AUTHORING_OAUTH_REDIRECT_URIS", "")
-    return {uri.strip() for uri in configured.split(",") if uri.strip()}
-
-
 def _registrable_redirect_uri(uri: str) -> bool:
-    """Allow loopback callbacks for native clients plus explicitly configured web callbacks."""
-    if uri in _allowed_registration_redirect_uris():
-        return True
+    """Allow any HTTPS callback plus loopback HTTP callbacks for native clients.
+
+    The consent screen, which names the callback host, is what stops a rogue client.
+    """
     parsed = urlparse(uri)
-    return (
-        parsed.scheme == "http"
-        and parsed.hostname in LOOPBACK_HOSTS
-        and not parsed.fragment
-        and not parsed.username
-        and not parsed.password
-    )
+    if not parsed.hostname or parsed.fragment or parsed.username or parsed.password:
+        return False
+    if parsed.scheme == "https":
+        return True
+    return parsed.scheme == "http" and parsed.hostname in LOOPBACK_HOSTS
 
 
 @csrf_exempt
@@ -264,7 +260,7 @@ def oauth_register(request: HttpRequest) -> JsonResponse:
     if not all(_registrable_redirect_uri(uri) for uri in redirect_uris):
         return _oauth_error(
             "invalid_redirect_uri",
-            "Only loopback or explicitly allowed redirect URIs can be registered",
+            "Redirect URIs must be HTTPS or loopback HTTP",
         )
 
     auth_method = metadata.get("token_endpoint_auth_method", "client_secret_basic")

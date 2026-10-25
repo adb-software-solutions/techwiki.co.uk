@@ -80,7 +80,7 @@ Then choose **Authenticate** for `techwiki-admin` under `/mcp`.
 
 Registration is unauthenticated, so it is deliberately narrow:
 
-- Redirect URIs must be loopback (`http://localhost`, `127.0.0.1` or `[::1]`, any port) unless listed exactly in `TECHWIKI_AUTHORING_OAUTH_REDIRECT_URIS` (comma-separated, for hosted callbacks such as ChatGPT or claude.ai).
+- Redirect URIs must be HTTPS (any host, so hosted clients such as ChatGPT and claude.ai can register) or loopback HTTP (`http://localhost`, `127.0.0.1` or `[::1]`, any port). Fragments and embedded credentials are refused. The consent screen leads with the callback host, since the client name is self-reported.
 - Clients may register as public (`token_endpoint_auth_method: none`, PKCE only) or confidential (a secret is returned once).
 - Registration is rate limited to 10 per hour per IP.
 - A registered client still cannot obtain tokens without the owner signing in and approving the consent screen, which shows the redirect URI.

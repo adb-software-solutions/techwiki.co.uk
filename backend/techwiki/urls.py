@@ -30,6 +30,10 @@ urlpatterns = [
     path("accounts/", include("django.contrib.auth.urls")),
     path(".well-known/oauth-authorization-server", oauth_authorization_server_metadata),
     path(".well-known/oauth-protected-resource", authoring_protected_resource_metadata),
+    path(
+        ".well-known/oauth-protected-resource/admin-mcp",
+        authoring_protected_resource_metadata,
+    ),
     path("oauth/authorize", oauth_authorize),
     path("oauth/register", oauth_register),
     path("oauth/token", oauth_token),
