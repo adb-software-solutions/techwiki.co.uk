@@ -63,6 +63,7 @@
                 "unifiedjs.vscode-mdx",
 
                 // AI Tools
+                "anthropic.claude-code",
                 "openai.chatgpt"
             ],
             "settings": {

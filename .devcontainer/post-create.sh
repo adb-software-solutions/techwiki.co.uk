@@ -70,6 +70,8 @@ fi
 
 # Setup git safe directory
 git config --global --add safe.directory /workspace
+bash .devcontainer/scripts/install-claude
+bash .devcontainer/scripts/install-codex
 
 ###############################################################################
 # Bash prompt fix: ensure (venv) shows in every interactive bash in VS Code
