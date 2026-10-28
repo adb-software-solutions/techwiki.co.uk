@@ -2,7 +2,7 @@
     "name": "techwiki.co.uk Dev Container",
     "dockerComposeFile": ["docker-compose.yml"],
     "service": "app",
-    "workspaceFolder": "/workspace",
+    "workspaceFolder": "${localWorkspaceFolder}",
     "shutdownAction": "stopCompose",
 
     // Features to install in the container
@@ -122,15 +122,17 @@
 
     // Mounts
     "mounts": [
+        "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind,consistency=cached",
+        "source=vscode-server-extensions,target=/root/.vscode-server/extensions,type=volume",
         // Persistent Bash history
         // The history file will live at /root/.history/.bash_history
         "source=techwiki-bash-history,target=/root/.history,type=volume",
 
         // Persistent Codex configuration, authentication and sessions
-        "source=techwiki-codex-config,target=/root/.codex,type=volume",
+        "source=${localEnv:HOME}/.codex,target=${localEnv:HOME}/.codex,type=bind,consistency=cached",
 
         // Persistent Claude Code configuration, authentication and sessions
-        "source=techwiki-claude-config,target=/root/.claude,type=volume",
+        "source=${localEnv:HOME}/.claude,target=${localEnv:HOME}/.claude,type=bind,consistency=cached",
 
         // Workspace
         "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
@@ -146,9 +148,9 @@
     "containerEnv": {
         // Keep all Claude Code state inside the persistent .claude volume.
         // This also handles state that would otherwise live in /root/.claude.json.
-        "CLAUDE_CONFIG_DIR": "/root/.claude",
+        "CLAUDE_CONFIG_DIR": "${localEnv:HOME}/.claude",
 
         // Explicitly tell Codex where its persistent home is.
-        "CODEX_HOME": "/root/.codex"
+        "CODEX_HOME": "${localEnv:HOME}/.codex"
     }
 }
