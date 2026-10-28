@@ -131,6 +131,8 @@
 
         // Persistent Codex configuration, authentication and sessions
         "source=${localEnv:HOME}/.codex,target=${localEnv:HOME}/.codex,type=bind,consistency=cached",
+        // Codex's IPC socket stays per container; the host app has its own there.
+        "source=codex-ipc,target=${localEnv:HOME}/.codex/ipc,type=volume",
 
         // Persistent Claude Code configuration, authentication and sessions
         "source=${localEnv:HOME}/.claude,target=${localEnv:HOME}/.claude,type=bind,consistency=cached",
