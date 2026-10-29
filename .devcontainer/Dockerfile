@@ -24,6 +24,7 @@ RUN apt-get update && apt-get upgrade -y \
     curl \
     wget \
     # General development tools
+    bubblewrap \
     git \
     vim \
     htop \
