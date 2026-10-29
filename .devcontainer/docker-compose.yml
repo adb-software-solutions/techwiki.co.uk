@@ -44,6 +44,8 @@ volumes:
     # prefixing it with the project name.
     vscode-server-extensions:
         name: vscode-server-extensions
+    codex-sqlite:
+        name: codex-sqlite
     postgres-data:
 
 networks:
