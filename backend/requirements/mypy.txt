@@ -294,10 +294,6 @@ types-pillow==10.2.0.20240822 \
     --hash=sha256:559fb52a2ef991c326e4a0d20accb3bb63a7ba8d40eb493e0ecb0310ba52f0d3 \
     --hash=sha256:d9dab025aba07aeb12fd50a6799d4eac52a9603488eca09d7662543983f16c5d
     # via -r backend/requirements/mypy.in
-types-psycopg2==2.9.21.20261008 \
-    --hash=sha256:4fe092ebf1b61c8b63a376dd8fa41f9bc0c3876948c1d3c0a039d1a0e842df07 \
-    --hash=sha256:6211642ac3ed423de069669d2d4516dfd02451049201c3ecb2740f5083cfccaa
-    # via -r backend/requirements/mypy.in
 types-pytz==2026.5.0.20261006 \
     --hash=sha256:1a522c2ec03aad8d4baaf97105958019ad51704b1e471c882d1c6ccea3e5e64b \
     --hash=sha256:9e4a893b362a8eed4e10a348c80603ade65bdb3819419e589364afafe2ea08b1

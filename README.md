@@ -103,6 +103,12 @@ python manage.py migrate
 python manage.py runserver 8000
 ```
 
+Database connections go through psycopg's pool, one per process. Tune it
+with `DB_POOL_MIN_SIZE` (default 2), `DB_POOL_MAX_SIZE` (default 20) and
+`DB_POOL_TIMEOUT` (seconds a request waits for a free connection, default
+10). Keep `DB_POOL_MAX_SIZE` × Gunicorn workers below Postgres's
+`max_connections` (100 by default).
+
 ### Frontends
 
 Create `website/.env.local`:

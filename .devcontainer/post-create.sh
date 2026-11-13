@@ -32,20 +32,20 @@ echo "Installing frontend dependencies..."
 # One pnpm workspace: this installs website and auth-frontend too.
 pnpm install
 
-# Wait for database to be ready using Python and psycopg2
+# Wait for database to be ready using Python and psycopg
 echo "Waiting for database to be ready..."
 until /opt/venv/bin/python -c "
 import sys
-import psycopg2
+import psycopg
 try:
-    psycopg2.connect(
+    psycopg.connect(
         dbname='techwiki_dev',
         user='techwiki',
         password='techwiki_dev_password',
         host='db',
         port=5432,
     )
-except psycopg2.OperationalError:
+except psycopg.OperationalError:
     sys.exit(-1)
 sys.exit(0)
 "; do

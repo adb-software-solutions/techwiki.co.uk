@@ -172,6 +172,15 @@ DATABASES = {
         "PORT": os.environ.get("SQL_PORT", "5432"),
         "OPTIONS": {
             "sslmode": os.environ.get("SQL_SSL", "disable"),
+            # psycopg's connection pool, per process. Requests wait up to
+            # DB_POOL_TIMEOUT seconds for a free connection instead of each
+            # opening its own, so a burst of traffic can no longer exhaust
+            # Postgres's max_connections ("too many clients already").
+            "pool": {
+                "min_size": int(os.environ.get("DB_POOL_MIN_SIZE", "2")),
+                "max_size": int(os.environ.get("DB_POOL_MAX_SIZE", "20")),
+                "timeout": float(os.environ.get("DB_POOL_TIMEOUT", "10")),
+            },
         },
     }
 }
