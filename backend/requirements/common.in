@@ -1,6 +1,6 @@
 # Core Dependencies
 Django==6.0.9
-psycopg2==2.9.13
+psycopg[binary,pool]==3.3.9
 Pillow==13.0.0
 python-dotenv==1.2.4
 gunicorn==26.2.0
