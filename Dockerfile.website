@@ -1,5 +1,7 @@
 # Stage 1: Build the Next.js app
-FROM node:22-alpine AS builder
+# Debian (glibc) in both stages: pnpm installs the sharp binary for the
+# build stage's C library, so the runner has to match it.
+FROM node:22-bookworm-slim AS builder
 
 RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 
@@ -19,12 +21,24 @@ COPY ./website/.ci.env ./website/.env.production
 RUN pnpm --dir website run build && rm -f website/.env
 
 # Stage 2: Serve the Next.js app with Node.js
-FROM node:22-alpine AS runner
+FROM node:22-bookworm-slim AS runner
+
+# next/image resizes with sharp (libvips), whose native memory the
+# default allocator kept after bursts of resizes. jemalloc, which sharp
+# recommends for long-running servers, hands it back to the OS.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libjemalloc2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s "$(find /usr/lib -name libjemalloc.so.2 | head -n 1)" \
+        /usr/local/lib/libjemalloc.so.2 \
+    && test -e /usr/local/lib/libjemalloc.so.2
+ENV LD_PRELOAD=/usr/local/lib/libjemalloc.so.2
 
 ENV NODE_ENV=production
 
 # Create a non-root user
-RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+RUN groupadd -g 1001 nodejs \
+    && useradd -u 1001 -g nodejs -m -s /usr/sbin/nologin nextjs
 
 # website/node_modules links into the workspace's /app/node_modules, so both
 # keep their places.
