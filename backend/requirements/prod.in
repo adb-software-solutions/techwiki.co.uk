@@ -7,3 +7,4 @@ h11>=0.16.0  # Security: GHSA-vqfr-h8mv-ghfj (transitive).
 pyjwt>=2.15.0  # Security: GHSA-ffc3-869f-jxw9 (transitive).
 urllib3>=2.8.0  # Security: GHSA-2xpw-w6gg-jr37 (transitive).
 idna>=3.15  # Security: GHSA-65pc-fj4g-8rjx (transitive).
+dnspython>=2.9.2  # Security: GHSA-vvf4-9x63-8xvv (transitive).

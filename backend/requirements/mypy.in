@@ -2,11 +2,11 @@
 # /tools/update-locked-requirements to update requirements/dev.txt
 # and requirements/mypy.txt.
 # See requirements/README.md for more detail.
-mypy==2.4.0
+mypy==2.4.1
 
-types-requests==2.33.0.20261006
-types-pytz==2026.5.0.20261006
-types-Markdown==3.10.2.20261007
+types-requests==2.33.0.20261030
+types-pytz==2026.6.0.20261031
+types-Markdown==3.11.3.20261108
 
 django-stubs==6.0.9
 
